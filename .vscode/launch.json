@@ -1,6 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
+    // borrowed from https://medium.com/@kiran.jasvanee/prettier-auto-formatting-in-visual-studio-code-beab1c026b13
     {
       "name": "Current TS File",
       "type": "node",

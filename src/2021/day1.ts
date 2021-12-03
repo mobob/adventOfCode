@@ -1,4 +1,5 @@
-var fs = require("fs");
+import * as fs from "fs";
+
 var array = fs.readFileSync("src/2021/day1.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
