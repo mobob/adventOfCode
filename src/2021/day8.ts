@@ -13,6 +13,25 @@ for (let key in lineLengths) {
   console.log(`number of length ${key}: ${lineLengths[key]}`);
 }
 
+// helpful!
+/**  0:      1:      2:      3:      4:
+ aaaa    ....    aaaa    aaaa    ....
+b    c  .    c  .    c  .    c  b    c
+b    c  .    c  .    c  .    c  b    c
+ ....    ....    dddd    dddd    dddd
+e    f  .    f  e    .  .    f  .    f
+e    f  .    f  e    .  .    f  .    f
+ gggg    ....    gggg    gggg    ....
+
+  5:      6:      7:      8:      9:
+ aaaa    aaaa    aaaa    aaaa    aaaa
+b    .  b    .  .    c  b    c  b    c
+b    .  b    .  .    c  b    c  b    c
+ dddd    dddd    ....    dddd    dddd
+.    f  e    f  .    f  e    f  .    f
+.    f  e    f  .    f  e    f  .    f
+ gggg    gggg    ....    gggg    gggg */
+
 function setToString<T>(set: Set<T> | undefined): string {
   if (!set) {
     return "";
@@ -77,12 +96,6 @@ function justUnknown(cn: CodedNumber) {
   return cnSubtract(cn, { code: "0123456789" });
 }
 
-function sortCodedNumbers(array: Array<CodedNumber>) {
-  array.map((val) => {
-    sortCodedNumber(val);
-  });
-}
-
 class DecoderRing {
   // this can contain multi - ie ab -> 25
   map = new Map<string, number>();
@@ -106,8 +119,6 @@ function decodeAsBestPossible(
     decodeSingle(cn, decoderRing);
   });
 }
-
-// DUP of above method, but for one
 function decodeSingle(cn: CodedNumber, decoderRing: DecoderRing) {
   // sort before, sort after
   sortCodedNumber(cn);
@@ -120,14 +131,12 @@ function decodeSingle(cn: CodedNumber, decoderRing: DecoderRing) {
     });
 
     if (charsPresent === encodedKey.length) {
-      console.log(
-        `found match of ${encodedKey} in ${cn.code}, about to replace with ${decodedValue}`
-      );
+      //console.log(`found match of ${encodedKey} in ${cn.code}, about to replace with ${decodedValue}`);
       [...encodedKey].forEach((encodedChar) => {
         cn.code = cn.code.replace(encodedChar, "");
       });
       cn.code = cn.code + `${decodedValue}`;
-      console.log(`match is now ${cn.code}`);
+      //console.log(`match is now ${cn.code}`);
     }
   });
 
@@ -139,10 +148,6 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   const decoderRing = new DecoderRing();
 
   // build them up by length
-
-  // ASIDE - WHOA - this fills it with the SAME OBJECT!!!!
-  //const codedByLength = new Array<Array<CodedNumber>>(codedSet.length).fill([]);
-
   const codedByLength = new Array<Array<CodedNumber>>(codedSet.length);
   codedSet.forEach((val) => {
     if (!codedByLength[val.code.length]) {
@@ -151,6 +156,7 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
     codedByLength[val.code.length].push(val);
   });
 
+  ///
   // first, find the 2 that have length 2 and 3, which we know are 1 and 7
   decoderRing.digitMap.set(1, codedByLength[2][0]);
   decoderRing.digitMap.set(7, codedByLength[3][0]);
@@ -168,11 +174,9 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
     .join("");
   decoderRing.map.set(seg25, 25);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
 
+  ///
   // now there should be one of length 4 that has two that are not decoded
   // it is our digit 4
   decoderRing.digitMap.set(4, codedByLength[4][0]);
@@ -181,11 +185,9 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
     .join("");
   decoderRing.map.set(seg13, 13);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
 
+  ///
   // there are 3 numbers with length 6 - the 9 should have only one remaining
   // unsolved part (the bottom), and this is the one we want
   const oneRemaining = codedByLength[6].filter((val) => {
@@ -198,22 +200,18 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   const [seg6] = justUnknown(oneRemaining[0]);
   decoderRing.map.set(seg6, 6);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
 
+  ///
   // so lets get the 8 - the only segment
   // it should have missing that we haven't mapped out yet is segment 4
   decoderRing.digitMap.set(8, codedByLength[7][0]);
   const [seg4] = Array.from(justUnknown(decoderRing.digitMap.get(8)!))[0];
   decoderRing.map.set(seg4, 4);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
 
+  ///
   // ok now we'll just be specific - the two remaining digits of length 6, 6 and 0,
   // each have a segment left to sort. the one that includes a 3 cannot be the 0.
   // and the missing segment is segment 1!
@@ -227,11 +225,9 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   const [seg1] = Array.from(justUnknown(decoderRing.digitMap.get(0)!))[0];
   decoderRing.map.set(seg1, 1);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
 
+  ///
   // and NOW there should only be one value of size 6 left, the 6
   // missing segment is 5!
   const the6 = codedByLength[6].filter((val) => {
@@ -244,14 +240,9 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   const [seg5] = Array.from(justUnknown(decoderRing.digitMap.get(6)!))[0];
   decoderRing.map.set(seg5, 5);
 
-  // find the difference between those two, that will help us translate
-  //codedSet[0].code = "foo";
-
   decodeAsBestPossible(codedSet, decoderRing);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
+  ///
   // 5 should be solved now
   const the5 = codedByLength[5].filter((val) => {
     return justUnknown(val).size === 0;
@@ -261,6 +252,7 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   }
   decoderRing.digitMap.set(5, the5[0]);
 
+  ///
   // NOW we have 2 left. two left of size 5, the 3 and the 2.
   // the 3 has one remaining to sort, and the 2 has 2 remaining to sort
 
@@ -275,10 +267,10 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   const [seg3] = Array.from(justUnknown(decoderRing.digitMap.get(3)!))[0];
   decoderRing.map.set(seg3, 3);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
+
+  ///
+  // the 2!
 
   const the2 = codedByLength[5].filter((val) => {
     return justUnknown(val).size === 1;
@@ -290,11 +282,9 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
   const [seg2] = Array.from(justUnknown(decoderRing.digitMap.get(2)!))[0];
   decoderRing.map.set(seg2, 2);
 
-  console.dir(decoderRing);
-  console.dir(codedSet);
-
   decodeAsBestPossible(codedSet, decoderRing);
 
+  ///
   // verify we all good
   codedSet.forEach((val) => {
     if (justUnknown(val).size > 0) {
@@ -302,18 +292,13 @@ function generateDecoderRing(codedSet: Array<CodedNumber>): DecoderRing {
     }
   });
 
-  //console.dir(digitMap);
-
-  //console.dir(codedSet);
-
-  // now prune anything from the ring that is multiple values
+  ///
+  // now prune anything from the ring that is multiple values, we don't need that
   decoderRing.map.forEach((val, key, map) => {
     if (key.length > 1) {
       map.delete(key);
     }
   });
-
-  console.dir(decoderRing);
   if (decoderRing.map.size !== 7) {
     throw `bad decoder ring!`;
   }
