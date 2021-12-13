@@ -83,6 +83,14 @@ class CavePath {
     }).length;
   }
 
+  visitedAnySmallCaveTwice(): boolean {
+    // if the array is bigger than the set of small caves visited, we have
+    const smallCavesVisited = this.path.filter((val) => {
+      return val.isSmallCave;
+    });
+    return new Set(smallCavesVisited).size < smallCavesVisited.length;
+  }
+
   asString(): string {
     var result = "";
     this.path.forEach((c) => {
@@ -106,7 +114,7 @@ function isValidNextCave(
   //   return false;
   // }
   // for part 2!
-  if (next.isSmallCave && cp.isInPathCount(next) >= 2) {
+  if (next.isSmallCave && cp.isInPath(next) && cp.visitedAnySmallCaveTwice()) {
     return false;
   }
   return true;
@@ -145,9 +153,6 @@ function findAllPaths(
           const newCompletePaths = findAllPaths(newPath, caveMap, connections);
           if (newCompletePaths.length > 0) {
             completePaths.push(...newCompletePaths);
-            console.log(
-              `now have ${completePaths.length}, adding: ${newCompletePaths}`
-            );
           }
         }
       }
@@ -162,14 +167,14 @@ function findAllPathsIterative(
   currentPath: CavePath,
   caveMap: Map<string, Cave>,
   connections: CaveConnections
-): Array<CavePath> {
-  const completePaths = new Array<CavePath>();
+): number {
+  var completePathCount = 0;
 
   var toProcessStack = [currentPath];
   while (toProcessStack.length > 0) {
     if (findCount++ % 10000 === 0) {
       console.log(
-        `find ${findCount} - complete:${completePaths.length} at len ${
+        `find ${findCount} - complete:${completePathCount} at len ${
           currentPath.path.length
         } for ${currentPath.asString()}`
       );
@@ -188,7 +193,7 @@ function findAllPathsIterative(
 
           // if its actually the end, then this one is done
           if (next.isEnd) {
-            completePaths.push(newPath);
+            completePathCount++;
           } else {
             toProcessStack.push(newPath);
           }
@@ -197,7 +202,7 @@ function findAllPathsIterative(
     }
   }
 
-  return completePaths;
+  return completePathCount;
 }
 
 class CaveConnections {
@@ -235,12 +240,12 @@ function spelunk(caveMap: Map<string, Cave>, connections: Array<Array<Cave>>) {
   const startingPath = new CavePath();
   startingPath.addToPath(caveMap.get("start")!);
 
-  //const completePaths = findAllPaths(startingPath, caveMap, caveConnections);
-  const completePaths = findAllPathsIterative(
-    startingPath,
-    caveMap,
-    caveConnections
-  );
+  const completePaths = findAllPaths(startingPath, caveMap, caveConnections);
+  // const completePaths = findAllPathsIterative(
+  //   startingPath,
+  //   caveMap,
+  //   caveConnections
+  // );
   completePaths.forEach((cp) => {
     console.log(cp.asString());
   });
