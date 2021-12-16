@@ -1,5 +1,6 @@
 import exp from "constants";
 import * as fs from "fs";
+import { start } from "repl";
 
 var array = fs.readFileSync("src/2021/day15.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
@@ -36,13 +37,15 @@ function riskAtPosition(x: number, y: number): number {
 class Point {
   x: number;
   y: number;
+  private str: string;
   constructor($x: number, $y: number) {
     this.x = $x;
     this.y = $y;
+    this.str = `(${this.x},${this.y})`;
   }
 
   asString(): string {
-    return `(${this.x},${this.y})`;
+    return this.str;
   }
 
   get isEndPoint(): boolean {
@@ -77,6 +80,12 @@ class Path {
     }
   }
 
+  unvisitLast() {
+    const last = this.points.pop()!;
+    this.visited.delete(last!.asString());
+    this.risk -= riskAtPosition(last.x, last.y);
+  }
+
   get last(): Point {
     return this.points[this.points.length - 1];
   }
@@ -107,17 +116,13 @@ var lowestCostLocationMap = new Map<String, number>();
 
 // returns a Path if it finds one that is lower risk than the one past in
 var exploreCount = 0;
-function explore(
-  path: Path,
-  p: Point,
-  lowestRiskSoFar: number | null
-): number | null {
+function explore(path: Path, p: Point, lowestRiskSoFar: number): Path | null {
   if (!p.isInMap) return null;
-  if (path.visited.has(p.asString())) return null;
+  //if (path.visited.has(p.asString())) return null;
 
-  if (++exploreCount % 100000 === 0) {
+  if (++exploreCount % 1000000 === 0) {
     console.log(
-      `exploreCount ${exploreCount} at (${p.x}, ${p.y}), lowestRiskSoFar: ${lowestRiskSoFar}, cur: ${path.risk}`
+      `exploreCount ${exploreCount} at (${p.x}, ${p.y}), lowestRiskSoFar: ${lowestRiskSoFar}, cur: ${path.risk}, low cost len:${lowestCostLocationMap.size}`
     );
     // throw `foobar`;
   }
@@ -126,10 +131,10 @@ function explore(
   // );
 
   // lets visit it
-  path.visit(p);
+  //path.visit(p);
 
   // if we went over the risk tolerance, we're done
-  if (lowestRiskSoFar && path.risk >= lowestRiskSoFar) {
+  if (path.risk >= lowestRiskSoFar) {
     return null;
   }
 
@@ -144,45 +149,49 @@ function explore(
 
   // if we reached the end, we're done
   if (p.isEndPoint) {
-    return path.risk;
+    return path.duplicate();
   }
 
-  // lets explore! all the ways!
-  // lowestRiskSoFar = newBestRiskScore(
-  //   explore(path.duplicate(), new Point(p.x - 1, p.y), lowestRiskSoFar),
-  //   lowestRiskSoFar
-  // );
+  // lets explore forward only for now
+  var pointsToExplore = new Array<Point>();
+  pointsToExplore.push(new Point(p.x + 1, p.y));
+  pointsToExplore.push(new Point(p.x, p.y + 1));
+  pointsToExplore.push(new Point(p.x - 1, p.y));
+  pointsToExplore.push(new Point(p.x, p.y - 1));
+  pointsToExplore = pointsToExplore.filter((val) => {
+    return val.isInMap && !path.visited.has(val.asString());
+  });
+  // and go in the best fit direction
 
-  if (exploreCount % 2 === 0) {
-    lowestRiskSoFar = newBestRiskScore(
-      explore(path.duplicate(), new Point(p.x + 1, p.y), lowestRiskSoFar),
-      lowestRiskSoFar
-    );
+  // finished it to 656 did seeem to speed it up...  but likely not much
+  // last run was without this
+  pointsToExplore.sort((a, b) => {
+    return riskAtPosition(a.x, a.y) - riskAtPosition(b.x, b.y);
+  });
+
+  var newBestPath: Path | null = null;
+
+  pointsToExplore.forEach((pte) => {
+    path.visit(pte);
+
+    newBestPath = explore(path, pte, lowestRiskSoFar) ?? newBestPath;
+    if (newBestPath && newBestPath.risk < lowestRiskSoFar) {
+      lowestRiskSoFar = newBestPath.risk;
+    }
+
+    path.unvisitLast();
+
+    // if (newLowestRiskScore && newLowestRiskScore < lowestRiskSoFar!) {
+    //   lowestRiskSoFar = newLowestRiskScore;
+    // }
+
     // lowestRiskSoFar = newBestRiskScore(
-    //   explore(path.duplicate(), new Point(p.x, p.y - 1), lowestRiskSoFar),
+    //   explore(path.duplicate(), pte, lowestRiskSoFar),
     //   lowestRiskSoFar
     // );
-    lowestRiskSoFar = newBestRiskScore(
-      explore(path.duplicate(), new Point(p.x, p.y + 1), lowestRiskSoFar),
-      lowestRiskSoFar
-    );
-  } else {
-    lowestRiskSoFar = newBestRiskScore(
-      explore(path.duplicate(), new Point(p.x, p.y + 1), lowestRiskSoFar),
-      lowestRiskSoFar
-    );
+  });
 
-    lowestRiskSoFar = newBestRiskScore(
-      explore(path.duplicate(), new Point(p.x + 1, p.y), lowestRiskSoFar),
-      lowestRiskSoFar
-    );
-    // lowestRiskSoFar = newBestRiskScore(
-    //   explore(path.duplicate(), new Point(p.x, p.y - 1), lowestRiskSoFar),
-    //   lowestRiskSoFar
-    // );
-  }
-
-  return lowestRiskSoFar;
+  return newBestPath;
 }
 
 function testPath(): Path {
@@ -198,12 +207,15 @@ function testPath(): Path {
 }
 
 (() => {
-  const apath = testPath();
-  console.log(`a test path is: ${apath.risk}`);
+  // 658 actually got...  and then 650
+  // 594?????? wtf!
+  const startingLowRisk = 680; //testPath().risk; //660; // just start where we left off = testPath();
+  console.log(`a test path is: ${startingLowRisk}`);
 
   const startPath = new Path();
+  startPath.visit(new Point(0, 0));
 
-  const lowestRisk = explore(startPath, new Point(0, 0), apath.risk);
+  const lowestRisk = explore(startPath, new Point(0, 0), startingLowRisk);
 
-  console.log(lowestRisk);
+  console.dir(lowestRisk);
 })();
