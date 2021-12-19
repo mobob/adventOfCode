@@ -1,8 +1,10 @@
-import exp from "constants";
 import * as fs from "fs";
-import { start } from "repl";
 
-var array = fs.readFileSync("src/2021/day15.txt").toString().trim().split("\n");
+var array = fs
+  .readFileSync("src/2021/day15test.txt")
+  .toString()
+  .trim()
+  .split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
 array.forEach((element: string) => {
@@ -42,8 +44,6 @@ function buildRiskMap(a: Array<string>) {
     }
   }
 
-  console.dir(rows);
-
   return { riskMap: rows, width: width * 5, height: height * 5 };
 }
 const { riskMap, width, height } = buildRiskMap(array);
@@ -51,8 +51,6 @@ const { riskMap, width, height } = buildRiskMap(array);
 function riskAtPosition(x: number, y: number): number {
   return riskMap[y][x];
 }
-
-//console.log(riskAtPosition(2, 0));
 
 class Point {
   x: number;
@@ -63,6 +61,8 @@ class Point {
     this.y = $y;
     this.str = `(${this.x},${this.y})`;
   }
+
+  costFromRoot: number = Infinity;
 
   asString(): string {
     return this.str;
@@ -79,186 +79,202 @@ class Point {
     return this.x >= 0 && this.x < width && this.y >= 0 && this.y < height;
   }
 
-  distanceTo(p: Point): number {
-    // don't need/want to be this precise
-    // const dx = p.x - this.x;
-    // const dy = p.y - this.y;
-    // return Math.floor(Math.sqrt(dx * dx + dy * dy));
-
+  manhattanDistance(p: Point): number {
     return Math.abs(p.y - this.y) + Math.abs(p.x - this.x);
   }
 }
 
-function pointFromString(pointString: string) {
-  const matches = pointString.match(/-?\d+/g);
-  return new Point(parseInt(matches![0]), parseInt(matches![1]));
+///
+
+interface Stringable {
+  asString(): string;
 }
 
-// can we just go through all possible paths?
+class PQNode<T extends Stringable> {
+  obj: T;
+  constructor($obj: T) {
+    this.obj = $obj;
+  }
+}
 
-class Path {
-  points = new Array<Point>();
-  visited = new Set<string>();
-  risk = 0;
+class PriorityQueue<T extends Stringable> {
+  private items = new Array<PQNode<T>>();
+  private keyStrToItem = new Map<string, PQNode<T>>();
 
-  visit(p: Point) {
-    this.points.push(p);
-    this.visited.add(p.asString());
-    if (!p.isStartPoint) {
-      this.risk += riskAtPosition(p.x, p.y);
+  private comparator: (a: T, b: T) => number;
+  constructor($comparator: (a: T, b: T) => number) {
+    this.comparator = $comparator;
+  }
+
+  // yes. i totally stole all this code from: https://www.geeksforgeeks.org/implementation-priority-queue-javascript/
+  enqueue(obj: T) {
+    var qElement = new PQNode(obj);
+    var contain = false;
+
+    for (var i = 0; i < this.items.length; i++) {
+      if (this.comparator(this.items[i].obj, qElement.obj) > 0) {
+        this.items.splice(i, 0, qElement);
+        contain = true;
+        break;
+      }
+    }
+
+    if (!contain) {
+      this.items.push(qElement);
+    }
+
+    // and add to our set
+    this.keyStrToItem.set(qElement.obj.asString(), qElement);
+  }
+
+  get isEmpty() {
+    return this.items.length == 0;
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  dequeue() {
+    if (this.isEmpty) throw `underflow!`;
+
+    const obj = this.items.shift()!.obj;
+    this.keyStrToItem.delete(obj.asString());
+
+    return obj;
+  }
+
+  has(obj: T): boolean {
+    return !!this.keyStrToItem.get(obj.asString());
+  }
+
+  remove(obj: T): boolean {
+    for (var i = 0; i < this.items.length; i++) {
+      if (this.items[i].obj == obj) {
+        this.items.splice(i, 1);
+        this.keyStrToItem.delete(obj.asString());
+        return true;
+      }
+    }
+    return false;
+  }
+
+  updatePriorityIfHas(obj: T) {
+    // if we successfully remove it, readd it
+    if (this.remove(obj)) {
+      this.enqueue(obj);
     }
   }
-
-  unvisitLast() {
-    const last = this.points.pop()!;
-    this.visited.delete(last!.asString());
-    this.risk -= riskAtPosition(last.x, last.y);
-  }
-
-  get last(): Point {
-    return this.points[this.points.length - 1];
-  }
-
-  duplicate(): Path {
-    const dup = new Path();
-    dup.points = [...this.points];
-    dup.visited = new Set(this.visited);
-    dup.risk = this.risk;
-    return dup;
-  }
 }
 
-function newBestRiskScore(
-  resultPathRiskScore: number | null,
-  lowestRiskSoFar: number | null
-): number | null {
-  if (resultPathRiskScore === null) return lowestRiskSoFar;
-  if (!lowestRiskSoFar) return resultPathRiskScore;
-  if (resultPathRiskScore < lowestRiskSoFar) {
-    //console.log(`new low risk score: ${resultPathRiskScore}`);
-    return resultPathRiskScore;
-  }
-  return lowestRiskSoFar;
-}
+///
 
-var lowestCostLocationMap = new Map<String, number>();
-
-// returns a Path if it finds one that is lower risk than the one past in
-var exploreCount = 0;
-function explore(path: Path, p: Point, lowestRiskSoFar: number): Path | null {
-  if (!p.isInMap) return null;
-  //if (path.visited.has(p.asString())) return null;
-
-  if (++exploreCount % 1000000 === 0) {
-    console.log(
-      `exploreCount ${exploreCount} at (${p.x}, ${p.y}), lowestRiskSoFar: ${lowestRiskSoFar}, cur: ${path.risk}, low cost len:${lowestCostLocationMap.size}`
-    );
-    // throw `foobar`;
-  }
-  // console.log(
-  //   `exploreCount ${exploreCount} at (${p.x}, ${p.y}), lowestRiskSoFar: ${lowestRiskSoFar}, cur: ${path.risk}`
-  // );
-
-  // lets visit it
-  //path.visit(p);
-
-  // if we went over the risk tolerance, we're done
-  if (path.risk >= lowestRiskSoFar) {
-    return null;
-  }
-
-  // if we've been at this spot before at this cost or cheaper, then we're also done
-  const curSpotLowCost = lowestCostLocationMap.get(p.asString());
-  if (curSpotLowCost) {
-    if (curSpotLowCost < path.risk) {
-      return null;
-    }
-  }
-  lowestCostLocationMap.set(p.asString(), path.risk);
-
-  // if we reached the end, we're done
-  if (p.isEndPoint) {
-    return path.duplicate();
-  }
-
-  // if our distance to the end is further than the best fit, don't bother
-  const end = new Point(width - 1, height - 1);
-
-  // lets explore forward only for now
+function getUnvisitedNeighbours(
+  map: Array<Array<Point>>,
+  pq: PriorityQueue<Point>,
+  p: Point
+): Array<Point> {
   var pointsToExplore = new Array<Point>();
-  pointsToExplore.push(new Point(p.x + 1, p.y));
-  pointsToExplore.push(new Point(p.x, p.y + 1));
-  pointsToExplore.push(new Point(p.x - 1, p.y));
-  pointsToExplore.push(new Point(p.x, p.y - 1));
+  if (p.x + 1 < width) pointsToExplore.push(map[p.y][p.x + 1]);
+  if (p.y + 1 < height) pointsToExplore.push(map[p.y + 1][p.x]);
+  if (p.x > 0) pointsToExplore.push(map[p.y][p.x - 1]);
+  if (p.y > 0) pointsToExplore.push(map[p.y - 1][p.x]);
   pointsToExplore = pointsToExplore.filter((val) => {
-    return (
-      val.isInMap &&
-      !path.visited.has(val.asString()) &&
-      val.distanceTo(end) <= lowestRiskSoFar - path.risk
-    );
+    return val && val.isInMap;
   });
-  // and go in the best fit direction
+  return pointsToExplore;
+}
 
-  // lets optimize for the point that takes us CLOSEST to home, and if its close, we optimize based on risk
+function makeMap() {
+  const map = new Array<Array<Point>>();
+  for (var y = 0; y < height; y++) {
+    var row = new Array<Point>();
+    for (var x = 0; x < width; x++) {
+      const p = new Point(x, y);
+      row.push(new Point(x, y));
+    }
+    map.push(row);
+  }
+  return map;
+}
 
-  // finished it to 656 did seeem to speed it up...  but likely not much
-  // last run was without this
+const comparisonFunction = (a: Point, b: Point, end: Point) => {
+  // lets sort by the "closest" pieces first
+  const mdistdiff = a.manhattanDistance(end) - b.manhattanDistance(end);
+  if (mdistdiff !== 0) {
+    return mdistdiff;
+  }
 
-  pointsToExplore.sort((a, b) => {
-    return a.distanceTo(end) - b.distanceTo(end);
+  // otherwise its the one that is least cost
+  return a.costFromRoot - b.costFromRoot;
+};
 
-    //return riskAtPosition(a.x, a.y) - riskAtPosition(b.x, b.y);
+var exploreCount = 0;
+function aStar(start: Point, end: Point) {
+  const queue = new PriorityQueue<Point>((a: Point, b: Point) => {
+    return comparisonFunction(a, b, end);
   });
 
-  var newBestPath: Path | null = null;
+  const map = makeMap();
 
-  pointsToExplore.forEach((pte) => {
-    path.visit(pte);
+  const parentMap = new Map<string, Point>();
 
-    newBestPath = explore(path, pte, lowestRiskSoFar) ?? newBestPath;
-    if (newBestPath && newBestPath.risk < lowestRiskSoFar) {
-      lowestRiskSoFar = newBestPath.risk;
+  start.costFromRoot = 0;
+
+  // Init queue with the root node
+  queue.enqueue(start);
+
+  while (!queue.isEmpty) {
+    var p = queue.dequeue()!;
+
+    if (++exploreCount % 1000000 === 0) {
+      console.log(
+        `astar ${exploreCount} at (${p.x}, ${p.y}), parentMap len:${parentMap.size}, qsize: ${queue.size}`
+      );
+      // throw `foobar`;
     }
 
-    path.unvisitLast();
+    const neighbours = getUnvisitedNeighbours(map, queue, p);
+    for (var neighbor of neighbours) {
+      // if the new cost is cheaper, then this is the best path to this one so we need to explore it
+      const newNeighbourCost =
+        p.costFromRoot + riskAtPosition(neighbor.x, neighbor.y);
+      if (newNeighbourCost < neighbor.costFromRoot) {
+        neighbor.costFromRoot = newNeighbourCost;
 
-    // if (newLowestRiskScore && newLowestRiskScore < lowestRiskSoFar!) {
-    //   lowestRiskSoFar = newLowestRiskScore;
-    // }
+        // update it's best parent
+        parentMap.set(neighbor.asString(), p);
 
-    // lowestRiskSoFar = newBestRiskScore(
-    //   explore(path.duplicate(), pte, lowestRiskSoFar),
-    //   lowestRiskSoFar
-    // );
-  });
+        // and lets enqueue it, or update its priority in the queue
+        if (!queue.has(neighbor)) {
+          queue.enqueue(neighbor);
+        } else {
+          queue.updatePriorityIfHas(neighbor);
+        }
+      }
+    }
+  }
 
-  return newBestPath;
+  return parentMap;
 }
 
-function testPath(): Path {
-  // visit all the x, then work our way down
-  const path = new Path();
-  for (let x = 0; x < width; x++) {
-    path.visit(new Point(x, 0));
-  }
-  for (let y = 0; y < width; y++) {
-    path.visit(new Point(width - 1, y));
-  }
-  return path;
-}
+///
 
 (() => {
-  // 658 actually got...  and then 650
-  // 594?????? wtf! - wrong
-  // 680 was it
-  // 4566!
-  const startingLowRisk = 4570; //testPath().risk; //660; // just start where we left off = testPath();
-  console.log(`a test path is: ${startingLowRisk}`);
+  const startPoint = new Point(0, 0);
+  const endPoint = new Point(width - 1, height - 1);
 
-  const startPath = new Path();
-  startPath.visit(new Point(0, 0));
+  const startTime = new Date();
+  const parentMap = aStar(startPoint, endPoint);
+  console.log(`total time: ${new Date().getTime() - startTime.getTime()}`);
 
-  const lowestRisk = explore(startPath, new Point(0, 0), startingLowRisk);
+  // trace it back
+  var cur = endPoint;
+  var cost = 0;
+  while (cur !== startPoint) {
+    cost += riskAtPosition(cur.x, cur.y);
+    cur = parentMap.get(cur.asString())!;
+  }
 
-  console.dir(lowestRisk);
+  console.dir(cost);
 })();
