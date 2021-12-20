@@ -1,6 +1,4 @@
-import exp from "constants";
 import * as fs from "fs";
-import { start } from "repl";
 
 var array = fs.readFileSync("src/2021/day15.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
