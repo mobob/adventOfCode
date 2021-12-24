@@ -1,11 +1,7 @@
 import assert from "assert";
 import * as fs from "fs";
 
-var array = fs
-  .readFileSync("src/2021/day19test.txt")
-  .toString()
-  .trim()
-  .split("\n");
+var array = fs.readFileSync("src/2021/day19.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
 array.forEach((element: string) => {
@@ -72,6 +68,15 @@ class Vector {
   }
 }
 
+function vectorFromString(vstr: string): Vector {
+  const matches = vstr.match(/-?\d+/g);
+  return new Vector(
+    parseInt(matches![0]),
+    parseInt(matches![1]),
+    parseInt(matches![2])
+  );
+}
+
 interface Scanner {
   identifier: number;
   beaconLocations: Array<Vector>;
@@ -108,6 +113,13 @@ function parseInput(a: string[]) {
       );
     }
   });
+
+  // push one more!
+  scanners.push({
+    identifier: currentIdentifier,
+    beaconLocations: current,
+  });
+
   return scanners;
 }
 
@@ -127,24 +139,6 @@ interface DifferenceInfo {
   magnitudes: Array<number>;
   magnitudesSet: Set<number>;
 }
-
-// function getDifferenceVectorsFor(s1: Scanner, s2: Scanner) {
-//   var differenceVectors: Array<Vector> = s1.beaconLocations.map(
-//     (bl1) => {
-//       return bl1.minus(bl2);
-//     }
-//   );
-//   const magnitudes = differenceVectors.map((v) => {
-//     return v.magnitude;
-//   });
-//   const magnitudesSet = new Set(magnitudes);
-//   alldiffs.push({
-//     beaconLocation: bl1,
-//     differenceVectors,
-//     magnitudes: magnitudes,
-//     magnitudesSet,
-//   });
-// }
 
 function getAllDifferenceVectors(scanner: Scanner) {
   const alldiffs = new Array<DifferenceInfo>();
@@ -168,7 +162,8 @@ function getAllDifferenceVectors(scanner: Scanner) {
   return alldiffs;
 }
 
-// returns all 24 (cough - 32!) permutations of the vector
+// returns all 24 (cough - 32! - cough even more!!) permutations of the vector
+// definitely some duplication here, but it works.
 function rotationalPermutationsOf(v: Vector): Array<Vector> {
   const posOrNegXYZOptions = [
     [1, 1, 1],
@@ -181,19 +176,21 @@ function rotationalPermutationsOf(v: Vector): Array<Vector> {
     [-1, -1, -1],
   ];
 
-  const numPermutes = 4;
+  const numPermutes = 6;
   const permute = (x: number, y: number, z: number, ind: number): Vector => {
     if (ind === 0) return new Vector(x, y, z);
-    if (ind === 1) return new Vector(y, x, z);
-    if (ind === 2) return new Vector(z, y, x);
-    if (ind === 3) return new Vector(x, z, y);
+    if (ind === 1) return new Vector(x, z, y);
+    if (ind === 2) return new Vector(y, x, z);
+    if (ind === 3) return new Vector(y, z, x);
+    if (ind === 4) return new Vector(z, x, y);
+    if (ind === 5) return new Vector(z, y, x);
     throw `bad permutation ${ind}`;
   };
 
   // there must be some redundancy in these as there should be 24...  but this will make 32. Oh well
   const result = new Array<Vector>();
   posOrNegXYZOptions.forEach((pon) => {
-    for (var pi = 0; pi < 4; pi++) {
+    for (var pi = 0; pi < numPermutes; pi++) {
       result.push(permute(v.x * pon[0], v.y * pon[1], v.z * pon[2], pi));
     }
   });
@@ -202,10 +199,10 @@ function rotationalPermutationsOf(v: Vector): Array<Vector> {
 
 // this is used to transform one coordinate system to another
 class Transform {
-  private translation: Vector;
+  translation: Vector;
 
   // this is an index into the returned array of #rotationalPermutationsOf
-  private rotationalPermutationIndex: number;
+  rotationalPermutationIndex: number;
 
   // this is how these things chain on. When you do this one, THEN the next, etc., until all done
   next?: Transform;
@@ -268,39 +265,55 @@ function identifyTransforms(scanners: Scanner[]): Map<number, Transform> {
 
         // we loop over all possibly permutations on the target
         var matches: Array<[number, Vector]> = [];
-        dvsKnown.forEach((known, knownDvsIndex) => {
-          known.differenceVectors.forEach((knownDv, knownDvIndex) => {
+        dvsKnown.forEach((known, knownEndOfDvIndex) => {
+          known.differenceVectors.forEach((knownDv, knownStartOfDevIndex) => {
             if (knownDv.isZeroVector) return;
 
-            dvsTarget.forEach((target, targetDvsIndex) => {
-              target.differenceVectors.forEach((targetDv, targetDvIndex) => {
-                if (targetDv.isZeroVector) return;
+            // this is a bit weird - but to avoid having to append transforms together, we transform
+            // this now based on what it is, so it becomes absolute
 
-                const targetPermumtations = rotationalPermutationsOf(targetDv);
-                targetPermumtations.forEach(
-                  (possibleMatchVector, permutationIndex) => {
-                    if (knownDv.isEqualTo(possibleMatchVector)) {
-                      // found one!
-                      // lets calculate what the known -> target vector would look like as we'll need it
-                      // its basically the s1->b1 + b1->s2.
-                      const knownBeaconLocation = known.beaconLocation.clone(); // s1->b1
+            // pulling this out - i think the chaining isn't working right as when i go to compare 1 and 4,
+            // they're not finding any matches
+            knownDv =
+              rotationalPermutationsOf(knownDv)[
+                transform.rotationalPermutationIndex
+              ];
 
-                      // so run this through this permutation
-                      const targetBeaconLocationToKnownCoords =
-                        rotationalPermutationsOf(target.beaconLocation)[
-                          permutationIndex
-                        ];
+            dvsTarget.forEach((target, targetEndOfDvIndex) => {
+              target.differenceVectors.forEach(
+                (targetDv, targetStartOfDvIndex) => {
+                  if (targetDv.isZeroVector) return;
 
-                      // and subtract it - which is essentially inverting it, and adding it
-                      const sourceToTarget = knownBeaconLocation.minus(
-                        targetBeaconLocationToKnownCoords
-                      );
+                  const targetPermumtations =
+                    rotationalPermutationsOf(targetDv);
+                  targetPermumtations.forEach(
+                    (possibleMatchVector, permutationIndex) => {
+                      if (knownDv.isEqualTo(possibleMatchVector)) {
+                        // found one!
+                        // lets calculate what the origin -> target vector would look like as we'll need it
+                        // its basically the s1->b1 + b1->s2.
+                        const absoluteKnownBeaconLocation = transform.transform(
+                          known.beaconLocation.clone()
+                        ); // origin->b1
 
-                      matches.push([permutationIndex, sourceToTarget]);
+                        // so run this through this permutation
+                        const targetBeaconLocationToKnownCoords =
+                          rotationalPermutationsOf(target.beaconLocation)[
+                            permutationIndex
+                          ];
+
+                        // and subtract it - which is essentially inverting it, and adding it
+                        const originToTarget =
+                          absoluteKnownBeaconLocation.minus(
+                            targetBeaconLocationToKnownCoords
+                          );
+
+                        matches.push([permutationIndex, originToTarget]);
+                      }
                     }
-                  }
-                );
-              });
+                  );
+                }
+              );
             });
           });
         });
@@ -309,20 +322,49 @@ function identifyTransforms(scanners: Scanner[]): Map<number, Transform> {
           console.log(
             `found ${matches.length} between ${knownScannerIndex} and ${targetScannerIndex}`
           );
+          console.dir(matches);
 
-          // make sure its just one unique transform, map the perm indexes to a set to check this
-          const transformIndexSet = new Set(matches.map((info) => info[0]));
-          if (transformIndexSet.size != 1) {
-            throw `got too many unique transforms`;
+          // i don't _really_ understand this, but it seems one set maps amazingly,
+          // and then another doesnt
+
+          // build a map of perm number to unique vectors
+          const map = new Map<number, Set<string>>();
+          const permCount = new Map<number, number>();
+          matches.forEach(([perm, vec]) => {
+            map.set(
+              perm,
+              (map.get(perm) ?? new Set<string>()).add(vec.asString())
+            );
+            permCount.set(perm, (permCount.get(perm) ?? 0) + 1);
+          });
+
+          // and then only pick any of those that have at least 3 matches ?
+          permCount.forEach((count, perm) => {
+            if (count <= 2) {
+              map.delete(perm);
+            }
+          });
+
+          console.dir(map);
+          console.dir(permCount);
+
+          // reduce it down to only ones that only have one unique vector
+          const uniqueMap = new Map<number, Vector>();
+          const uniquePermValues = map.forEach((val, key) => {
+            if (val.size === 1) {
+              uniqueMap.set(key, vectorFromString(Array.from(val)[0]));
+            }
+          });
+
+          if (uniqueMap.size !== 1) {
+            throw `didn't nail it, perms of size 1: ${uniqueMap.size}`;
           }
 
+          const perm = Array.from(uniqueMap.keys())[0];
+          const translation = uniqueMap.get(perm)!;
+
           // this transform is actually going to be a combination of the first one, and the one we just applied
-          transforms.set(
-            targetScannerIndex,
-            transforms
-              .get(knownScannerIndex)!
-              .append(new Transform(matches[0][1], matches[0][0]))
-          );
+          transforms.set(targetScannerIndex, new Transform(translation, perm));
         }
       });
     });
@@ -331,11 +373,14 @@ function identifyTransforms(scanners: Scanner[]): Map<number, Transform> {
   return transforms;
 }
 
-function countBeacons(scanners: Scanner[], transforms: Transform[]): number {
+function countBeacons(
+  scanners: Scanner[],
+  transforms: Map<number, Transform>
+): number {
   const beaconLocationStrings = new Set<string>();
 
   scanners.forEach((s, ind) => {
-    const transform = transforms[ind];
+    const transform = transforms.get(ind)!;
 
     s.beaconLocations.forEach((bl) => {
       const blright = transform.transform(bl);
@@ -343,6 +388,8 @@ function countBeacons(scanners: Scanner[], transforms: Transform[]): number {
       beaconLocationStrings.add(blright.asString());
     });
   });
+
+  console.dir(Array.from(beaconLocationStrings).sort());
 
   return beaconLocationStrings.size;
 }
@@ -358,6 +405,30 @@ function tests() {
   );
 
   // 3 scanners, 3 beacons, all different
+
+  // first lets list all transfroms so we know what they are
+  const v = new Vector(2, 1, 0);
+  rotationalPermutationsOf(v).forEach((v1, ind) =>
+    console.log(`perm:${ind} - ${v1.asString()}`)
+  );
+
+  // scanner2: so lets do the one that flips over 180:
+  const scanner2actual = new Vector(2, -2, 0);
+  const scanner2permIndex180 = 24;
+
+  // and just 90 degrees
+  const scanner3actual = new Vector(1, -4, 0);
+  const scanner3permIndex90 = 14;
+
+  const beacon1actual = new Vector(0, -2, 0);
+  const beacon2actual = new Vector(4, -5, 0);
+
+  // ok, lets do beacon1 from scanner 2
+  const scanner2beacon1given = new Vector(2, 0, 0);
+  const scanner2transform = new Transform(scanner2actual, scanner2permIndex180);
+  assert(
+    beacon1actual.isEqualTo(scanner2transform.transform(scanner2beacon1given))
+  );
 }
 
 (() => {
@@ -379,54 +450,23 @@ function tests() {
   });
   console.log(`scanners with beacon counts: ${beaconCount}`);
 
-  // lets compare the magituntdes of differences between all points in the first 2 to see
-  // const dvs1 = getAllDifferenceVectors(scanners[0]);
-  // const dvs2 = getAllDifferenceVectors(scanners[1]);
-
-  // compare all those in v1 to see how many are in common with v2
-  // var intersections = new Map<number, Array<[number, number]>>();
-  // dvs1.forEach((dvs, ind) => {
-  //   intersections.set(ind, []);
-  //   dvs2.forEach((other, otherind) => {
-  //     const intersect = setIntersect(dvs.magnitudesSet, other.magnitudesSet);
-  //     intersections.get(ind)?.push([otherind, intersect.size]);
-
-  //     const dvs1vectorSet = new Set(
-  //       dvs.differenceVectors.map((v) => v.asString())
-  //     );
-  //     const dvs2vectorSet = new Set(
-  //       other.differenceVectors.map((v) => v.asString())
-  //     );
-  //     const vectorIntersections = setIntersect(dvs1vectorSet, dvs2vectorSet);
-
-  //     if (intersect.size >= 12) {
-  //       console.log(`found ${intersect.size} intersections...`);
-  //       dvs.differenceVectors.forEach((v) => {
-  //         console.log(`${ind} - ${v.asString()} - mag:${v.magnitude}`);
-  //       });
-  //       other.differenceVectors.forEach((v) => {
-  //         console.log(`${otherind} - ${v.asString()} - mag:${v.magnitude}`);
-  //       });
-
-  //       console.log(`vector intersections: ${vectorIntersections.size}`);
-  //       vectorIntersections.forEach((vstr) => {
-  //         console.log(`${otherind} - ${vstr}`);
-  //       });
-  //     }
-  //   });
-  // });
-
-  // console.log(dvs1);
-  // console.log(dvs2);
-  // console.log(`intersections: `);
-  // console.dir(intersections);
-
-  // // lets take a look at 0, and 3
-  // console.log("intersection vectors: ");
-  // console.dir(dvs1[0].differenceVectors);
-  // console.dir(dvs1[3].differenceVectors);
-
   const transforms = identifyTransforms(scanners);
 
   console.dir(transforms);
+
+  const count = countBeacons(scanners, transforms);
+  console.log(`beacon count: ${count}`);
+
+  // part 2 - largest manhattan distance between any two translation vectors
+  var maxManDistance = 0;
+  transforms.forEach((t1, scannerIndex) => {
+    transforms.forEach((t2, scannerIndex) => {
+      const diff = t1.translation.minus(t2.translation);
+      const manDist = diff.magnitudeMahatten;
+      if (manDist > maxManDistance) {
+        maxManDistance = manDist;
+      }
+    });
+  });
+  console.log(`max man distance: ${maxManDistance}`);
 })();
