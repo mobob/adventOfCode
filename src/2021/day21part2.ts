@@ -250,6 +250,17 @@ class DiracDice {
       `t:${turnCount} player ${currentTurn}: score counts: ${scoreCounts[currentTurn]}, pos: ${positionCounts[currentTurn]}`
     );
 
+    console.log(
+      `num positions: ${positionCounts[currentTurn].reduce((prev, cur) => {
+        return prev + cur;
+      })}`
+    );
+    console.log(
+      `num scores: ${scoreCounts[currentTurn].reduce((prev, cur) => {
+        return prev + cur;
+      })}`
+    );
+
     // positionCounts[currentTurn].forEach((numInPosition, position) => {
     //   if (position === 0) return;
     //   startingPosToNewPositionPossibilities[position].forEach(
