@@ -1,10 +1,6 @@
 import * as fs from "fs";
 
-var array = fs
-  .readFileSync("src/2021/day21test.txt")
-  .toString()
-  .trim()
-  .split("\n");
+var array = fs.readFileSync("src/2021/day21.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
 array.forEach((element: string) => {
@@ -15,9 +11,6 @@ for (let key in lineLengths) {
   console.log(`number of length ${key}: ${lineLengths[key]}`);
 }
 
-//const scoreForWin = 21;
-const scoreForWin = 5;
-
 // returns starting positions of the two players
 function parseInput(a: Array<string>): Array<number> {
   const startingPositions: number[] = [];
@@ -26,44 +19,6 @@ function parseInput(a: Array<string>): Array<number> {
     startingPositions.push(parseInt(matches![1]));
   });
   return startingPositions;
-}
-
-class GameState {
-  playerPositions = new Array<number>(2).fill(1);
-  playerScores = new Array<number>(2).fill(0);
-  dice = new DiracDice();
-
-  clone(): GameState {
-    const c = new GameState();
-    c.playerPositions = [...this.playerPositions];
-    c.playerScores = [...this.playerScores];
-    c.dice = this.dice;
-    return c;
-  }
-
-  newPosition(oldPosition: number, diceRoll: number) {
-    var newPosition = (oldPosition + diceRoll) % 10;
-    return newPosition === 0 ? 10 : newPosition;
-  }
-
-  // we need to go deep
-  takeTurnTilScore(playerIndex: number) {
-    var pos = this.playerPositions[playerIndex];
-
-    // we know there are 27 possible combinations here
-    for (var i = 0; i < this.dice.allDiceRolls.length; i++) {
-      const universeRolls = this.dice.allDiceRolls[i];
-
-      this.playerScores[playerIndex] += pos;
-      this.playerPositions[playerIndex] = pos;
-    }
-  }
-
-  get gameComplete(): boolean {
-    return this.playerScores.reduce((prev: boolean, cur) => {
-      return prev || cur >= 1000;
-    }, false);
-  }
 }
 
 class DiracDice {
@@ -95,13 +50,25 @@ class DiracDice {
   }
 }
 
+class Pair {
+  elements!: [number, number];
+  constructor($p0: number, $p1: number) {
+    this.elements = [$p0, $p1];
+  }
+  asString(): string {
+    return `${this.elements[0]},${this.elements[1]}`;
+  }
+}
+
+function pairFromString(pstr: string): Pair {
+  const matches = pstr.match(/-?\d+/g);
+  return new Pair(parseInt(matches![0]), parseInt(matches![1]));
+}
+
 (() => {
   const startingPositions = parseInput(array);
 
   console.log(startingPositions);
-
-  const gs = new GameState();
-  gs.playerPositions = startingPositions;
 
   var currentTurn = 0;
 
@@ -125,19 +92,6 @@ class DiracDice {
     startingPosToNewPositionPossibilities[i] = counts;
   }
 
-  // the above shows it just cascades around, if pos starts at 1, adding starting at 4 1,3,6,7,6,3,1 up to 10.
-
-  // hence after every turn there are 27 individual new scores, but actually only 7 unique values
-
-  // so we can represent the game state as the number of times a given player will be in the various positions
-
-  // for scoring, the minimal we can move is 3 per turn, this doesn't necessarily result in the slowest victory.
-  // but again, we can just count the number of scores we will have at that point in time
-
-  // so we have to go until there are no scores below 21
-  // as a player takes a turn and their score goes above 21, we sub from their score counts, and add them as victors
-  // and we go until the array is empty
-
   const positionCounts = new Array<number[]>(2);
   startingPositions.forEach((pos, playerIndex) => {
     positionCounts[playerIndex] = new Array<number>(11)
@@ -147,125 +101,102 @@ class DiracDice {
       });
   });
 
-  // we acutally need a count, starting with each score, to a count of each position
-  // of that score!
-  const scoreMapPerPlayer = new Array<number[][]>(2);
-  for (
-    var playerIndex = 0;
-    playerIndex < scoreMapPerPlayer.length;
-    playerIndex++
-  ) {
-    const scoreMap = new Array<number[]>(21); // we need 0 -> 20
-    for (var score = 0; score < scoreMap.length; score++) {
-      scoreMap[score] = new Array<number>(11).fill(0);
-    }
-    scoreMapPerPlayer[playerIndex] = scoreMap;
-  }
-
-  // set our inital positions, score 0, and one game each
-  startingPositions.forEach((pos, playerIndex) => {
-    scoreMapPerPlayer[playerIndex][0][pos] = 1;
-  });
+  // map of
+  // score pair ->
+  //   position pair ->
+  //     count of games ongoing in that exact position
+  var scoresMap = new Map<string, Map<string, number>>();
+  const startingPositionMap = new Map<string, number>();
+  startingPositionMap.set(
+    new Pair(startingPositions[0], startingPositions[1]).asString(),
+    1
+  );
+  scoresMap.set(new Pair(0, 0).asString(), startingPositionMap);
 
   var winningCounts = [0, 0];
   var currentTurn = 0;
   var turnCount = 0;
+
   while (
     // ensure there is something in the score array by counting it all up, and continue
     // only if both of them have a score
-    scoreMapPerPlayer.reduce((prev: number, scores) => {
-      return (
-        prev +
-        scores.reduce((prev: number, positions) => {
-          return (
-            prev +
-            positions.reduce((prev: number, positionCount) => {
-              return prev + positionCount;
-            }, 0)
-          );
-        }, 0)
-      );
-    }, 0) > 0
+    scoresMap.size > 0
   ) {
     // take our turn
 
-    // BUG - it seems we're advancing too fast
-    // we should occupy every slot until the end...  yet it seems like we're advancing by 2
-    // every turn...
-
     // init a new score map we'll populate as we go, and will swap at the end
-    const newScoreMap = new Array<number[]>(21); // we need 0 -> 20
-    for (var score = 0; score < newScoreMap.length; score++) {
-      newScoreMap[score] = new Array<number>(11).fill(0);
-    }
+    const newScoresMap = new Map<string, Map<string, number>>();
 
-    scoreMapPerPlayer[currentTurn].forEach((positionList, score) => {
-      positionList.forEach((countInCurrentPosition, currentPosition) => {
-        if (currentPosition === 0) return;
-        if (countInCurrentPosition === 0) return;
+    scoresMap.forEach((positionMap, scoresPairString) => {
+      const scoresPair = pairFromString(scoresPairString);
+      positionMap.forEach(
+        (countInCurrentScoresAndPositions, positionPairString) => {
+          const positionsPair = pairFromString(positionPairString);
 
-        // go through all the possible new positions for this given position
-        startingPosToNewPositionPossibilities[currentPosition].forEach(
-          (newPositionCount, newPosition) => {
+          const currentPositionForCurrentPlayer =
+            positionsPair.elements[currentTurn];
+
+          // go through all the possible new positions for this given position
+          startingPosToNewPositionPossibilities[
+            currentPositionForCurrentPlayer
+          ].forEach((newPositionCount, newPosition) => {
             if (newPosition === 0) return;
 
             const newPositionCountIncrement =
-              newPositionCount * countInCurrentPosition;
+              newPositionCount * countInCurrentScoresAndPositions;
 
-            if (newPositionCountIncrement === 0) return;
-
-            const newScore = score + newPosition;
+            const newScore = scoresPair.elements[currentTurn] + newPosition;
             if (newScore >= 21) {
               // we have a winner! in this many universes this player just won
               winningCounts[currentTurn] += newPositionCountIncrement;
+
+              // this isn't going to get inserted into the new map, so effectively will get deleted
             } else {
-              // if (newScoreMap[newScore][newPosition] !== 0) {
-              //   console.log(
-              //     `not 0 ${newScoreMap[newScore][newPosition]} + ${newPositionCountIncrement}`
-              //   );
-              // }
               // otherwise we should add all the resultant new scores in this given new position for next round
-              newScoreMap[newScore][newPosition] += newPositionCountIncrement;
+
+              // get from our map if it exists - first build the new score key
+              var newScoresPair = pairFromString(scoresPairString);
+              newScoresPair.elements[currentTurn] = newScore;
+
+              if (!newScoresMap.has(newScoresPair.asString())) {
+                newScoresMap.set(
+                  newScoresPair.asString(),
+                  new Map<string, number>()
+                );
+              }
+              const newPositionMap: Map<string, number> = newScoresMap.get(
+                newScoresPair.asString()
+              )!;
+
+              // build the position key
+              var newPositionPair = pairFromString(positionPairString);
+              newPositionPair.elements[currentTurn] = newPosition;
+
+              var countToIncrement =
+                newPositionMap.get(newPositionPair.asString()) ?? 0;
+              newPositionMap.set(
+                newPositionPair.asString(),
+                countToIncrement + newPositionCountIncrement
+              );
             }
-          }
-        );
-      });
-    });
-
-    scoreMapPerPlayer[currentTurn] = newScoreMap;
-
-    // NOW - assuming this isn't the first turn, we need to multiple our score map by 27
-    // to account for the other players 27
-    //if (turnCount !== 0) {
-    scoreMapPerPlayer[currentTurn].forEach((positionCounts, score) => {
-      positionCounts.forEach((count, index) => {
-        positionCounts[index] *= 9;
-      });
-    });
-    //}
-
-    turnCount++;
-    // console.log(
-    //   `t:${turnCount} player ${currentTurn}: score counts: ${scoreMapPerPlayer[currentTurn]}`
-    // );
-    scoreMapPerPlayer[currentTurn].forEach((positionCounts, score) => {
-      console.log(
-        `t:${turnCount} player ${currentTurn}: score ${score} counts at position: ${positionCounts}`
+          });
+        }
       );
     });
 
-    const total = scoreMapPerPlayer[currentTurn].reduce(
-      (prev: number, positions) => {
-        return (
-          prev +
-          positions.reduce((prev: number, positionCount) => {
-            return prev + positionCount;
-          }, 0)
-        );
-      },
-      0
+    scoresMap = newScoresMap;
+
+    turnCount++;
+
+    var totalGames = 0;
+    scoresMap.forEach((positionMap) => {
+      positionMap.forEach((count) => {
+        totalGames += count;
+      });
+    });
+    console.log(
+      `t:${turnCount} player ${currentTurn}, totalGamesOngoing: ${totalGames} winningTotals: ${winningCounts}`
     );
-    console.log(`total: ${total}, winningTotals: ${winningCounts}`);
 
     currentTurn++;
     currentTurn %= 2;
