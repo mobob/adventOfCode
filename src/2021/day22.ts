@@ -1,10 +1,6 @@
 import * as fs from "fs";
 
-var array = fs
-  .readFileSync("src/2021/day22test.txt")
-  .toString()
-  .trim()
-  .split("\n");
+var array = fs.readFileSync("src/2021/day22.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
 array.forEach((element: string) => {
@@ -48,12 +44,6 @@ class Cuboid {
   }
 }
 
-type CubeWithHole = {
-  lit: boolean;
-  base: Cuboid;
-  holes: Cuboid[];
-};
-
 class CuboidWithHoles extends Cuboid {
   exclusiveHoles: CuboidWithHoles[] = [];
   lit: boolean;
@@ -74,28 +64,33 @@ class CuboidWithHoles extends Cuboid {
       // lets make this in to an new hole based on the intersection
       const hole = new CuboidWithHoles(intersection, other.lit);
 
-      // const hole: CubeWithHole = {
-      //   lit: ph.lit,
-      //   base: intersection,
-      //   holes: [],
-      // };
+      // and apply the holes from this one in it
+      hole.populateHoles(other.exclusiveHoles);
 
-      // calculate it's volume, and turn off or on that many depending
-      const holeVolume = calculateVolumeOf(hole, lit, possibleHoles.slice(1));
-
-      console.log(
-        `calculated holeVolume: ${holeVolume} and its lit: ${ph.lit}`
-      );
-
-      currentVolumeOfTargetLitness -= holeVolume;
+      // now we're good add this to our set
+      this.exclusiveHoles.push(hole);
     });
   }
 
-  litVolumeExclusive(possibleHoles: CuboidWithHoles[]): number {
-    // if we already have our holes initialized
-    var vol = this.volume;
+  volumeExclusive(): number {
+    var ongoingVolume = this.volume;
+    this.exclusiveHoles.forEach((other, phindex) => {
+      const holeVolumeExclusive = other.volumeExclusive();
+      ongoingVolume -= holeVolumeExclusive;
+    });
+    return ongoingVolume;
+  }
 
-    return vol;
+  litVolumeExclusive(): number {
+    // if it's not lit, it cannot have exclusive lit volume
+    if (!this.lit) return 0;
+    var ongoingVolume = this.volume;
+    this.exclusiveHoles.forEach((other, phindex) => {
+      // otherwise always remove all volume from the holes
+      const holeVolume = other.volumeExclusive();
+      ongoingVolume -= holeVolume;
+    });
+    return ongoingVolume;
   }
 }
 
@@ -112,60 +107,14 @@ function intersect(a: Cuboid, b: Cuboid): Cuboid | false {
 
   return new Cuboid(x1, x2, y1, y2, z1, z2);
 }
-
-function calculateVolumeOf(
-  cwh: CubeWithHole,
-  lit: boolean,
-  possibleHoles: CubeWithHole[]
-): number {
-  var currentVolumeOfTargetLitness = cwh.base.volume;
-
-  possibleHoles.forEach((ph, phindex) => {
-    // if there is no intersection, we can skip it
-    const intersection = intersect(cwh.base, ph.base);
-    if (intersection === false) {
-      return;
-    }
-
-    // lets make this in to a hole
-    const hole: CubeWithHole = {
-      lit: ph.lit,
-      base: intersection,
-      holes: [],
-    };
-
-    // calculate it's volume, and turn off or on that many depending
-    const holeVolume = calculateVolumeOf(hole, lit, possibleHoles.slice(1));
-
-    console.log(`calculated holeVolume: ${holeVolume} and its lit: ${ph.lit}`);
-
-    currentVolumeOfTargetLitness -= holeVolume;
-  });
-
-  // TODO - none of this really works yet...  i don't think i'm thinking about it right
-  // or dealing with the lit vs not correctly
-  // if an intersection is on and we're on, should we do anything? it eventually will have
-  // a hole in it which could affect it, so that NEEDS to be calculated.
-  // but also when i get to that eventual hole, i don't want to double count it?
-  // so how do i avoid that...  somehow i need to compare / recompare
-
-  if (
-    currentVolumeOfTargetLitness < 0 ||
-    currentVolumeOfTargetLitness > cwh.base.volume
-  ) {
-    throw `bad value: ${currentVolumeOfTargetLitness} > ${cwh.base.volume}`;
-  }
-
-  return lit === cwh.lit ? currentVolumeOfTargetLitness : 0;
-}
-
 interface Instruction {
   flipOn: boolean;
   cuboid: Cuboid;
 }
 
 function parseInput(a: string[]): Instruction[] {
-  return a.map((line) => {
+  var instructions: Instruction[] = [];
+  a.forEach((line) => {
     var on: boolean;
     if (line.startsWith("on")) {
       on = true;
@@ -183,12 +132,26 @@ function parseInput(a: string[]): Instruction[] {
       numbers[4],
       numbers[5]
     );
-    return { flipOn: on, cuboid: c };
+    instructions.push({ flipOn: on, cuboid: c });
   });
+  return instructions;
 }
 
 (() => {
-  const instructions = parseInput(array);
+  var instructions = parseInput(array);
+
+  const part1 = false;
+  if (part1) {
+    instructions = instructions.filter(
+      ({ cuboid }) =>
+        cuboid.x1 >= -50 &&
+        cuboid.x2 <= 50 &&
+        cuboid.y1 >= -50 &&
+        cuboid.y2 <= 50 &&
+        cuboid.z1 >= -50 &&
+        cuboid.z2 <= 50
+    );
+  }
 
   // lets add up the volume of each one, not accounting for overlap
   var totalVolume = instructions.reduce((prev, { cuboid }) => {
@@ -196,23 +159,25 @@ function parseInput(a: string[]): Instruction[] {
   }, 0);
   console.log(`total volume: ${totalVolume}`);
 
-  // don't like the instructions, lets make them all cubes with holes, uninitialized
-  const allcwhs: CubeWithHole[] = instructions.map((i) => {
-    return {
-      lit: i.flipOn,
-      base: i.cuboid,
-      holes: [],
-    };
+  // build up our holey cubes backwards to front
+  const holeyCubes: CuboidWithHoles[] = [];
+  instructions.reverse().forEach((i) => {
+    const cwh = new CuboidWithHoles(i.cuboid, i.flipOn);
+
+    cwh.populateHoles(holeyCubes);
+
+    holeyCubes.push(cwh);
   });
 
-  // ok lets iterate over each one
+  // then go through just the lit cubes, asking for their exclusive volume
+  // i could reverse this back but i don't think its necessary :thinkingface:
   var totalOn = 0;
-  allcwhs.forEach((cwh, index) => {
-    // process the current one with those that remain
-    const remaining = allcwhs.slice(index + 1);
-
-    totalOn += calculateVolumeOf(cwh, true, remaining);
-  });
+  holeyCubes
+    .filter((cwh) => cwh.lit)
+    .forEach((cwh, ind) => {
+      console.log(`holeycube ${ind} - vol: ${cwh.litVolumeExclusive()}`);
+      totalOn += cwh.litVolumeExclusive();
+    });
 
   console.log(`total on: ${totalOn}`);
 })();
