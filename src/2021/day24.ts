@@ -7,6 +7,11 @@ var arrayTest = fs
   .toString()
   .trim()
   .split("\n");
+var arrayTest2 = fs
+  .readFileSync("src/2021/day24test2.txt")
+  .toString()
+  .trim()
+  .split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
 array.forEach((element: string) => {
@@ -16,6 +21,8 @@ array.forEach((element: string) => {
 for (let key in lineLengths) {
   console.log(`number of length ${key}: ${lineLengths[key]}`);
 }
+
+const numDigits = 14;
 
 enum InstructionCommand {
   inp,
@@ -38,12 +45,23 @@ type Instruction = {
 };
 
 class ALU {
+  failOnMissingInput = true;
+
   variables: Variable[] = [
     { name: "w", value: 0 },
     { name: "x", value: 0 },
     { name: "y", value: 0 },
     { name: "z", value: 0 },
   ];
+
+  reset() {
+    this.variables = [
+      { name: "w", value: 0 },
+      { name: "x", value: 0 },
+      { name: "y", value: 0 },
+      { name: "z", value: 0 },
+    ];
+  }
 
   variableNamed(char: string): Variable {
     return this.variables.filter((v) => v.name === char)[0];
@@ -55,6 +73,8 @@ class ALU {
 
   executeSingle(i: Instruction, input: string[]) {
     if (i.command == InstructionCommand.inp) {
+      if (input.length === 0) throw `missing input`;
+
       const readInput = input.reverse().pop()!; // take the front off
       input.reverse();
 
@@ -96,10 +116,17 @@ class ALU {
     input: string[],
     displayFun: (alu: ALU) => void = (_) => {}
   ) {
-    program.forEach((i) => {
-      this.executeSingle(i, input);
-      displayFun(this);
-    });
+    for (var i of program) {
+      try {
+        this.executeSingle(i, input);
+        displayFun(this);
+      } catch (e) {
+        if (e === `missing input` && !this.failOnMissingInput) {
+          return;
+        }
+        throw e;
+      }
+    }
   }
 }
 
@@ -166,14 +193,48 @@ const test = () => {
   console.log(`tests pass!`);
 };
 
+const test2 = () => {
+  const instructions = parseInput(arrayTest2);
+
+  {
+    const input = [`1`, `3`];
+    const alu = new ALU();
+    alu.execute(instructions, input);
+    assert(alu.variableValueNamed("z") === 1);
+  }
+  {
+    const input = [`0`, `3`];
+    const alu = new ALU();
+    alu.execute(instructions, input);
+    assert(alu.variableValueNamed("z") === 0);
+  }
+  {
+    const input = [`3`, `3`];
+    const alu = new ALU();
+    alu.execute(instructions, input);
+    assert(alu.variableValueNamed("z") === 0);
+  }
+  {
+    const input = [`9`, `27`];
+    const alu = new ALU();
+    alu.execute(instructions, input);
+    assert(alu.variableValueNamed("z") === 1);
+  }
+  console.log(`tests 2 pass!`);
+};
+
+type DisplayFunctionType = (alu: ALU) => void;
+
 function isValidMONAD(
   num: number,
   monad: Instruction[],
-  displayFun: (alu: ALU) => void = (_) => {}
+  alu: ALU,
+  displayFun: DisplayFunctionType = (_) => {}
 ): boolean {
-  const alu = new ALU();
+  alu.failOnMissingInput = false;
+
   const strNum = `${num}`;
-  if (strNum.length !== 14 || strNum.includes("0")) return false;
+  if (/*strNum.length !== 14 ||*/ strNum.includes("0")) return false;
 
   const input = strNum.split("");
   alu.execute(monad, input, displayFun);
@@ -181,8 +242,36 @@ function isValidMONAD(
   return alu.variableValueNamed("z") === 0;
 }
 
+const logItAll = (alu: ALU) => {
+  const ppv = (v: Variable) => {
+    return `${v.name}:\t${v.value}`;
+  };
+  console.log(
+    `${ppv(alu.variables[0])} - ${ppv(alu.variables[1])} - ${ppv(
+      alu.variables[2]
+    )} - ${ppv(alu.variables[3])}`
+  );
+};
+
+var logEveryIteration = 0;
+const logEvery = (iterations: number): ((alu: ALU) => void) => {
+  return (alu: ALU) => {
+    if (logEveryIteration++ % iterations === 0) {
+      const ppv = (v: Variable) => {
+        return `${v.name}:\t${v.value}`;
+      };
+      console.log(
+        `${ppv(alu.variables[0])} - ${ppv(alu.variables[1])} - ${ppv(
+          alu.variables[2]
+        )} - ${ppv(alu.variables[3])}`
+      );
+    }
+  };
+};
+
 (() => {
   test();
+  test2();
 
   const instructions = parseInput(array);
 
@@ -197,31 +286,50 @@ function isValidMONAD(
     )}`
   );
 
-  const logItAll = (alu: ALU) => {
-    const ppv = (v: Variable) => {
-      return `${v.name}:\t${v.value}`;
-    };
-    console.log(
-      `${ppv(alu.variables[0])} - ${ppv(alu.variables[1])} - ${ppv(
-        alu.variables[2]
-      )} - ${ppv(alu.variables[3])}`
+  //const n1 = 13579246899999;
+  // console.log(isValidMONAD(13579246899999, instructions, logItAll));
+  // console.log(isValidMONAD(11111111111111, instructions, logItAll));
+  // console.log(isValidMONAD(99999999999999, instructions, logItAll));
+
+  //searchForValids(instructions, 10000000, 1000000000);
+
+  // lets test some smaller numbers
+
+  // break up the instructions into monad segments - there are numInstructions / 14 of them
+  const monadSegments: Instruction[][] = [];
+  const numSegments = numDigits;
+  const segmentLength = instructions.length / numDigits;
+  for (var i = 0; i < numSegments; i++) {
+    monadSegments[i] = instructions.slice(
+      i * segmentLength,
+      (i + 1) * segmentLength
     );
-  };
+  }
 
-  const n1 = 13579246899999;
-  console.log(isValidMONAD(13579246899999, instructions, logItAll));
-  console.log(isValidMONAD(11111111111111, instructions, logItAll));
-  console.log(isValidMONAD(99999999999999, instructions, logItAll));
+  // lets experiment with different inputs - via inspection we can see that only the z value is passed from
+  // one segment to the other, so its all that matters
+  const min = 1;
+  const max = 1000000;
 
-  const max = 99999999999999;
-  for (var n = max; ; n--) {
-    if (isValidMONAD(n, instructions)) {
-      console.log(`valid! ${n}`);
-      break;
-    }
-
-    if (n % 1000000 === 0) {
-      console.log(`at ${n}...`);
+  for (var carryInto = -max; carryInto < max; carryInto++) {
+    for (var digit = 1; digit <= 9; digit++) {
+      const alu = new ALU();
+      alu.variableNamed("z").value = carryInto;
+      const log = false; //carryInto % 9998 === 0;
+      if (log) {
+        console.log(`about to test ${carryInto}`);
+      }
+      if (
+        isValidMONAD(
+          digit,
+          monadSegments[monadSegments.length - 1],
+          alu,
+          log ? logItAll : () => {}
+        )
+      ) {
+        console.log(`valid! ${carryInto} digit: ${digit}`);
+        //throw `yay!!!!`;
+      }
     }
   }
 })();
