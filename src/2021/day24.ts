@@ -91,8 +91,15 @@ class ALU {
     }
   }
 
-  execute(program: Instruction[], input: string[]) {
-    program.forEach((i) => this.executeSingle(i, input));
+  execute(
+    program: Instruction[],
+    input: string[],
+    displayFun: (alu: ALU) => void = (_) => {}
+  ) {
+    program.forEach((i) => {
+      this.executeSingle(i, input);
+      displayFun(this);
+    });
   }
 }
 
@@ -159,13 +166,17 @@ const test = () => {
   console.log(`tests pass!`);
 };
 
-function isValidMONAD(num: number, monad: Instruction[]): boolean {
+function isValidMONAD(
+  num: number,
+  monad: Instruction[],
+  displayFun: (alu: ALU) => void = (_) => {}
+): boolean {
   const alu = new ALU();
   const strNum = `${num}`;
   if (strNum.length !== 14 || strNum.includes("0")) return false;
 
   const input = strNum.split("");
-  alu.execute(monad, input);
+  alu.execute(monad, input, displayFun);
 
   return alu.variableValueNamed("z") === 0;
 }
@@ -186,10 +197,21 @@ function isValidMONAD(num: number, monad: Instruction[]): boolean {
     )}`
   );
 
+  const logItAll = (alu: ALU) => {
+    const ppv = (v: Variable) => {
+      return `${v.name}:\t${v.value}`;
+    };
+    console.log(
+      `${ppv(alu.variables[0])} - ${ppv(alu.variables[1])} - ${ppv(
+        alu.variables[2]
+      )} - ${ppv(alu.variables[3])}`
+    );
+  };
+
   const n1 = 13579246899999;
-  console.log(isValidMONAD(13579246899999, instructions));
-  console.log(isValidMONAD(11111111111111, instructions));
-  console.log(isValidMONAD(99999999999999, instructions));
+  console.log(isValidMONAD(13579246899999, instructions, logItAll));
+  console.log(isValidMONAD(11111111111111, instructions, logItAll));
+  console.log(isValidMONAD(99999999999999, instructions, logItAll));
 
   const max = 99999999999999;
   for (var n = max; ; n--) {

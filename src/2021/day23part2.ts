@@ -1,11 +1,7 @@
 import assert from "assert";
 import * as fs from "fs";
 
-var array = fs
-  .readFileSync("src/2021/day23test.txt")
-  .toString()
-  .trim()
-  .split("\n");
+var array = fs.readFileSync("src/2021/day23.txt").toString().trim().split("\n");
 console.log(`parsed: ${array.length} elements, first one is ${array[0]}`);
 var lineLengths: { [length: number]: number } = {};
 array.forEach((element: string) => {
@@ -192,7 +188,10 @@ function possibleMovesFor(a: Amphipod, gs: GameState): Array<Position[]> {
     // if its occupied, no deal
     if (gs.positionMap.has(posKey)) return;
 
-    // pillar collumn
+    // if we're in the hallway, we must move in to a room
+    if (a.position.y === yHallway && position.y === yHallway) return;
+
+    // moving in to a room
     if (gs.gm.roomColumns.includes(position.x)) {
       // if its a spot outside a pillar, no deal
       if (position.y === yHallway) return;
@@ -201,30 +200,27 @@ function possibleMovesFor(a: Amphipod, gs: GameState): Array<Position[]> {
       if (targetPillarForType(a.amphipodType) !== position.x) return;
 
       // if its in a target pillar but its not the deepest most occupied pillar location, no deal
-      const deepestOccupied = gs.positionMap.get(pk({ x: position.x, y: 0 }));
+      var highestOccupied: Amphipod | undefined;
+      for (var y = yHallway - 1; y >= 0; y--) {
+        highestOccupied = gs.positionMap.get(pk({ x: position.x, y: y }));
+        if (highestOccupied) break;
+      }
 
-      // if its occupied also make sure its occupied someone in their final position
-      if (!deepestOccupied) {
-        // deepest is not occupied, so lets make sure we're going to the deepest spot
-        if (position.y !== 0) return false;
-      } else if (position.y === 0 || !deepestOccupied.inFinalPosition) {
-        // otherwise we better be going to a slot other than 0, and the deepest one better be in the final position
-        return false;
+      if (!highestOccupied) {
+        // still not occupied so this is fine, but then we better be going to the bottom
+        if (position.y !== 0) return;
+      } else if (!highestOccupied.inFinalPosition) {
+        // the top one needs to be in final position
+        return;
+      } else {
+        // lets just be sure we're landing right above it
+        if (position.y !== highestOccupied.position.y + 1) return;
       }
     }
-
-    // if we're in the hallway, we must move in to a room
-    if (a.position.y === yHallway && position.y === yHallway) return;
 
     // look for the best path to it
     const path = findPathTo(a.position, position, gs.gm);
     if (path === null) return;
-
-    // console.log(
-    //   `found path from ${pk(a.position)} -> ${pk(position)}, path: ${path.map(
-    //     (p) => pk(p)
-    //   )}`
-    // );
 
     // if path is length 1, its not useful
     if (path.length === 1) return;
@@ -237,10 +233,6 @@ function possibleMovesFor(a: Amphipod, gs: GameState): Array<Position[]> {
     // otherwise add this path
     pms.push(path);
   });
-
-  // console.log(
-  //   `pmfc:${pmfCount} fbs:${fbsCount} found ${pms.length} possible moves`
-  // );
 
   return pms;
 }
@@ -339,16 +331,20 @@ class GameState {
   get minRemainingScore(): number {
     // go through all that are not in their final position, and calculate min distance to get there
     var total = 0;
+    var typeToFinalCount: number[] = new Array<number>(4).fill(0);
     this.positionMap.forEach((a, posKey) => {
-      if (a.inFinalPosition) return;
+      if (a.inFinalPosition) {
+        typeToFinalCount[a.amphipodType]++;
+        return;
+      }
 
       const pos = positionFromString(posKey);
 
       const colDiff = Math.abs(pos.x - targetPillarForType(a.amphipodType));
 
       if (a.inStartingPosition) {
-        // don't know total height but assume it needs to go up then down once either side
-        total += (2 + colDiff) * scoreForType(a.amphipodType);
+        // add on the height for us to get out, to get back in is added at the end
+        total += (yHallway - pos.y + colDiff) * scoreForType(a.amphipodType);
         return;
       }
 
@@ -356,9 +352,25 @@ class GameState {
         throw `this shouldn't happen if we're not in starting or target positiong!`;
       }
 
-      // otherwise just one elevation will do
-      // TODO part 2 - might be able to make this smarter
-      total += (1 + colDiff) * scoreForType(a.amphipodType);
+      total += colDiff * scoreForType(a.amphipodType);
+    });
+
+    // now add on a bit more fine tuned depth based on how many are in final position
+    typeToFinalCount.forEach((count, type) => {
+      var sum = 0;
+      // based on: // 4 + 3 + 2 + 1 total moves to line us all up
+      if (count === 4) {
+        // nothing!
+      } else if (count === 3) {
+        sum = 1;
+      } else if (count === 2) {
+        sum = 1 + 2;
+      } else if (count === 1) {
+        sum = 1 + 2 + 3;
+      } else if (count === 0) {
+        sum = 1 + 2 + 3 + 4;
+      }
+      total += scoreForType(type) * sum;
     });
 
     return total;
@@ -387,7 +399,7 @@ function findBestScore(gs: GameState, bestScoreSoFar = -1): number | false {
   }
 
   fbsCount++;
-  if (fbsCount % 10000 == 0) {
+  if (fbsCount % 100000 == 0) {
     console.log(
       `fbs:${fbsCount} dissed:${fbsDisqualified} - moves:${gs.moveCount} curScore:${gs.totalScore} remaining:${gs.minRemainingScore} bestScore: ${bestScoreSoFar}`
     );
@@ -452,10 +464,11 @@ function findBestScore(gs: GameState, bestScoreSoFar = -1): number | false {
   });
 
   // gs.dumpPositions();
+  // console.log(gs.minRemainingScore);
   // return;
 
   // for the test we seed with 50000
-  const best = findBestScore(gs, 50000);
+  const best = findBestScore(gs); //46209);
 
   console.log(`best score: ${best}`);
 })();

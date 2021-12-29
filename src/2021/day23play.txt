@@ -214,3 +214,34 @@ AA -
 12386
 
 Still too high!!!
+
+
+
+
+OK - here is some output from test, part 2...  after running for a WHILE:
+
+fbs:70360000 dissed:1531580 - moves:16 curScore:9318 remaining:24730 bestScore: 46209
+moved 1 (2,3) -> (0,4) - infinal:false
+moved 1 (6,3) -> (10,4) - infinal:false
+moved 1 (6,2) -> (9,4) - infinal:false
+moved 2 (4,3) -> (1,4) - infinal:false
+moved 0 (6,1) -> (2,3) - infinal:true
+moved 2 (4,2) -> (7,4) - infinal:false
+moved 1 (4,1) -> (5,4) - infinal:false
+moved 3 (4,0) -> (3,4) - infinal:false
+moved 2 (7,4) -> (6,1) - infinal:true
+moved 1 (5,4) -> (4,0) - infinal:true
+moved 1 (9,4) -> (4,1) - infinal:true
+moved 3 (8,3) -> (9,4) - infinal:false
+moved 0 (8,2) -> (5,4) - infinal:false
+moved 2 (8,1) -> (7,4) - infinal:false
+moved 2 (7,4) -> (6,2) - infinal:true
+moved 0 (8,0) -> (7,4) - infinal:false
+#############
+#12.3.0.0.31#
+###0#.#.#.###
+###3#.#2#.###
+###3#1#2#.###
+###0#1#2#.###
+#############
+
