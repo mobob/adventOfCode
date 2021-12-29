@@ -229,8 +229,9 @@ function isValidMONAD(
   num: number,
   monad: Instruction[],
   alu: ALU,
+  validTargetZregisters: Set<number>,
   displayFun: DisplayFunctionType = (_) => {}
-): boolean {
+): false | number {
   alu.failOnMissingInput = false;
 
   const strNum = `${num}`;
@@ -239,7 +240,11 @@ function isValidMONAD(
   const input = strNum.split("");
   alu.execute(monad, input, displayFun);
 
-  return alu.variableValueNamed("z") === 0;
+  if (!validTargetZregisters.has(alu.variableValueNamed("z"))) {
+    return false;
+  }
+
+  return alu.variableValueNamed("z");
 }
 
 const logItAll = (alu: ALU) => {
@@ -309,27 +314,109 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
   // lets experiment with different inputs - via inspection we can see that only the z value is passed from
   // one segment to the other, so its all that matters
   const min = 1;
-  const max = 1000000;
+  const max = 100000;
 
-  for (var carryInto = -max; carryInto < max; carryInto++) {
-    for (var digit = 1; digit <= 9; digit++) {
-      const alu = new ALU();
-      alu.variableNamed("z").value = carryInto;
-      const log = false; //carryInto % 9998 === 0;
-      if (log) {
-        console.log(`about to test ${carryInto}`);
-      }
-      if (
-        isValidMONAD(
+  // OK we'll work our way backwards, starting at 0 in the carry over, and working our way up, and bail if we
+  // don't nail every digit
+
+  // for each segment, we'll create a map of the carry over + input value that produces a valid result.
+  // for the last segment, the result we want is all 1's, but that changes
+  var carryOverValuesAndDigitThatProduceValid: number[][] = new Array<number[]>(
+    numSegments + 1
+  );
+  for (var segment = 0; segment < numSegments + 1; segment++) {
+    carryOverValuesAndDigitThatProduceValid[segment] = new Array<number>(
+      10
+    ).fill(NaN);
+  }
+  for (var digit = 1; digit <= 9; digit++) {
+    carryOverValuesAndDigitThatProduceValid[numSegments][digit] = 0;
+  }
+
+  var iteration = 0;
+
+  for (var segment = numSegments - 1; segment >= 0; segment--) {
+    // lets get our valid target value set
+    var validTargetZregisters = new Set([
+      ...carryOverValuesAndDigitThatProduceValid[segment + 1].filter(
+        (val) => !isNaN(val)
+      ),
+    ]);
+
+    for (var carryInto = -max; carryInto < max; carryInto++) {
+      for (var digit = 1; digit <= 9; digit++) {
+        const alu = new ALU();
+        alu.variableNamed("z").value = carryInto;
+        const log = iteration++ % 199997 === 0;
+        if (log) {
+          console.log(
+            `about to test seg: ${segment}, carryInfo: ${carryInto} digit: ${digit}, against: ${Array.from(
+              validTargetZregisters
+            )}`
+          );
+        }
+
+        const result = isValidMONAD(
           digit,
-          monadSegments[monadSegments.length - 1],
+          monadSegments[segment],
           alu,
+          validTargetZregisters,
           log ? logItAll : () => {}
-        )
+        );
+
+        if (result !== false) {
+          console.log(
+            `valid! seg: ${segment}, carryInfo: ${carryInto} digit: ${digit}, matched: ${result}`
+          );
+
+          // tell the prev segment what they should be looking for
+          carryOverValuesAndDigitThatProduceValid[segment][digit] = carryInto;
+        }
+      }
+
+      // we can bail if we have a full set
+      if (
+        carryOverValuesAndDigitThatProduceValid[segment].filter(
+          (val) => !isNaN(val)
+        ).length === 9
       ) {
-        console.log(`valid! ${carryInto} digit: ${digit}`);
-        //throw `yay!!!!`;
+        break;
       }
     }
+
+    // do we have a good set
+    const valids = carryOverValuesAndDigitThatProduceValid[segment].filter(
+      (val) => !isNaN(val)
+    );
+    if (valids.length < 1) {
+      console.log(
+        `didn't get a valid set! ${carryOverValuesAndDigitThatProduceValid[segment]}`
+      );
+      break;
+    }
   }
+
+  console.dir(carryOverValuesAndDigitThatProduceValid);
+
+  // for (var carryInto = -max; carryInto < max; carryInto++) {
+  //   for (var digit = 1; digit <= 9; digit++) {
+  //     const alu = new ALU();
+  //     alu.variableNamed("z").value = carryInto;
+  //     const log = false; //carryInto % 9998 === 0;
+  //     if (log) {
+  //       console.log(`about to test ${carryInto}`);
+  //     }
+  //     if (
+  //       isValidMONAD(
+  //         digit,
+  //         monadSegments[monadSegments.length - 1],
+  //         alu,
+  //         log ? logItAll : () => {}
+  //       )
+  //     ) {
+  //       console.log(`valid! ${carryInto} digit: ${digit}`);
+  //       //throw `yay!!!!`;
+  //     }
+  //   }
+  // }
 })();
