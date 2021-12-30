@@ -1,7 +1,7 @@
 import assert from "assert";
 import * as fs from "fs";
 import { cursorTo } from "readline";
-import { DebugLoggerFunction } from "util";
+import { DebugLoggerFunction, isUndefined } from "util";
 
 var array = fs.readFileSync("src/2021/day24.txt").toString().trim().split("\n");
 var arrayTest = fs
@@ -227,6 +227,31 @@ const test2 = () => {
   console.log(`tests 2 pass!`);
 };
 
+const test3 = () => {
+  // testing...
+  console.log(isValidMONAD(3559921181672, instructions));
+  console.log(isValidMONAD(35599211816721, instructions));
+  console.log(isValidMONAD(35599211816722, instructions));
+  console.log(isValidMONAD(35599211816723, instructions));
+  console.log(isValidMONAD(35599211816724, instructions));
+  console.log(isValidMONAD(35599211816725, instructions));
+  console.log(isValidMONAD(35599211816726, instructions));
+  console.log(isValidMONAD(35599211816727, instructions));
+  console.log(isValidMONAD(35599211816728, instructions));
+  console.log(isValidMONAD(35599211816729, instructions));
+
+  const testmap: SegmentDigitZinZoutMapType = new Map<
+    number,
+    Map<number, Map<number, number>>
+  >();
+  const zinZout = new Map<number, number>();
+  zinZout.set(15, 0);
+  const digitZinZout = new Map<number, Map<number, number>>();
+  digitZinZout.set(1, zinZout);
+  testmap.set(13, digitZinZout);
+  findHighestValidNumber(testmap, "3559921181672", 15);
+};
+
 type DisplayFunctionType = (alu: ALU, iind: number) => void;
 
 function isValidMONAD(
@@ -357,24 +382,13 @@ function findHighestValidNumber(
     return cur;
   }
 
-  // start on the given segment
-
   const segment = curStr.length;
-
-  // for (var segment = curStr.length; segment < numDigits; segment++) {
-  // const digitToZoutMap = findAllMatchesForZin(map, segment, zin);
-  // if(digitToZoutMap.size == 0) return false;
 
   // work our way from the top downwards in digits
   for (var digit = 9; digit >= 1; digit--) {
     const zout = map.get(segment)?.get(digit)?.get(zin);
-    if (!zout) continue;
+    if (zout === undefined) continue;
 
-    // const zouts : number[] = digitToZoutMap.get(digit);
-    // if(!zouts) continue;
-
-    // lets try em all, and once we find one, we're done
-    //for(var zout of zouts) {
     const highestValidOrFalse = findHighestValidNumber(
       map,
       curStr + `${digit}`,
@@ -383,10 +397,8 @@ function findHighestValidNumber(
     if (highestValidOrFalse !== false) {
       console.log(`found it!!!!: ${highestValidOrFalse}`);
       return highestValidOrFalse;
-      //}
     }
   }
-  // }
 
   return false;
 }
@@ -394,6 +406,7 @@ function findHighestValidNumber(
 (() => {
   test();
   test2();
+  test3();
 
   console.log(
     `parsed ${
@@ -405,15 +418,6 @@ function findHighestValidNumber(
       0
     )}`
   );
-
-  //const n1 = 13579246899999;
-  // console.log(isValidMONAD(13579246899999, instructions, logItAll));
-  // console.log(isValidMONAD(11111111111111, instructions, logItAll));
-  // console.log(isValidMONAD(99999999999999, instructions, logItAll));
-
-  //searchForValids(instructions, 10000000, 1000000000);
-
-  // lets test some smaller numbers
 
   // break up the instructions into monad segments - there are numInstructions / 14 of them
   const monadSegments: Instruction[][] = [];
@@ -428,77 +432,17 @@ function findHighestValidNumber(
 
   // lets experiment with different inputs - via inspection we can see that only the z value is passed from
   // one segment to the other, so its all that matters
+  // however for segment 5 below, we bump it way up...  WEIRD YES
   const max = 500000; //10000000;
   const min = 0; //-10000000;
   var smallestFound = NaN;
   var biggestFound = NaN;
 
-  // OK we'll work our way backwards, starting at 0 in the carry over, and working our way up, and bail if we
-  // don't nail every digit
-
-  const allDigits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-  // this moves forward
-
-  const results = new Map<number, ReturnType<typeof testMonadSegmentWith>>();
-  for (var segment of [0, 1]) {
-    var zregvaluesToTestWith: number[] = [];
-    if (segment === 0) {
-      zregvaluesToTestWith.push(0);
-    } else {
-      const digitMap = results.get(segment - 1);
-
-      // merge all these together
-      digitMap!.forEach((zregmap, digit) => {
-        zregvaluesToTestWith.push(...Array.from(zregmap.values()));
-      });
-    }
-
-    results.set(
-      segment,
-      testMonadSegmentWith(
-        monadSegments[segment],
-        zregvaluesToTestWith,
-        allDigits,
-        logItAll
-      )
-    );
-  }
-
-  results.forEach((digitMap, segment) => {
-    digitMap.forEach((zinMap, digit) => {
-      zinMap.forEach((zout, zin) => {
-        console.log(
-          `segment ${segment}, digit: ${digit} zin: ${zin} zout: ${zout}`
-        );
-      });
-    });
-  });
-
-  console.log(isValidMONAD(3559921181672, instructions));
-  console.log(isValidMONAD(35599211816721, instructions));
-  console.log(isValidMONAD(35599211816722, instructions));
-  console.log(isValidMONAD(35599211816723, instructions));
-  console.log(isValidMONAD(35599211816724, instructions));
-  console.log(isValidMONAD(35599211816725, instructions));
-  console.log(isValidMONAD(35599211816726, instructions));
-  console.log(isValidMONAD(35599211816727, instructions));
-  console.log(isValidMONAD(35599211816728, instructions));
-  console.log(isValidMONAD(35599211816729, instructions));
-  return;
-
-  /*
-
-  //return;
-
-  // for each segment, we'll create a map of the carry over + input value that produces a valid result.
-  // for the last segment, the result we want is all 1's, but that changes
-
   // segment -> digit -> zin -> zout
-  var segDigitZinZoutMap: Map<
+  var segDigitZinZoutMap: SegmentDigitZinZoutMapType = new Map<
     number,
     Map<number, Map<number, number>>
-  > = new Map<number, Map<number, Map<number, number>>>();
+  >();
 
   var iteration = 0;
 
@@ -528,15 +472,14 @@ function findHighestValidNumber(
       ).slice(validTargetZregisters.size - 50)}`
     );
 
-    // we can just jump out if its the first segment, we only have one option for carrying in, and its 0.
-    // NOPE - lets try some valid z values here:
-    // if (segment === 0 && carryInto !== 0) break;
-
     for (var digit = 1; digit <= 9; digit++) {
       const zinZoutMap = new Map<number, number>();
 
       const maxToUse = segment === 5 ? 15000000 : max;
       for (var zin = min; zin < maxToUse; zin++) {
+        // we can just jump out if its the first segment, we only have one option for carrying in, and its 0.
+        if (segment === 0 && zin !== 0) break;
+
         const alu = new ALU();
         alu.variableNamed("z").value = zin;
         const log = false; //iteration++ % 999997 === 0; //&& segment <= 2;
@@ -548,15 +491,14 @@ function findHighestValidNumber(
           );
         }
 
-        const zoutOrFalse = isValidMONAD(
+        const zout = testMonad(
           digit,
           monadSegments[segment],
           alu,
-          validTargetZregisters,
           log ? logItAll : () => {}
         );
 
-        if (zoutOrFalse !== false) {
+        if (validTargetZregisters.has(zout)) {
           if (isNaN(smallestFound) || zin < smallestFound) smallestFound = zin;
           if (isNaN(biggestFound) || zin > biggestFound) biggestFound = zin;
 
@@ -565,7 +507,7 @@ function findHighestValidNumber(
           // );
 
           // tell the prev segment what they should be looking for
-          zinZoutMap.set(zin, zoutOrFalse);
+          zinZoutMap.set(zin, zout);
         }
       }
 
@@ -580,20 +522,12 @@ function findHighestValidNumber(
 
     console.log(`biggest: ${biggestFound}, smallest: ${smallestFound}`);
 
-    // TODO
-    // step through the first two iterations...  i think there might just be a bug with the ALU
-    // there are ~100 unique numbers to test there. lets see what output that produces...
-    // but actually walk through the instructions to underestand it better. READ THE CODE.
-
     // do we have a good set
     var total = 0;
     digitZinZoutMap.forEach((zinZoutMap, digit) => {
       total += zinZoutMap.size;
     });
 
-    // const total = zinputAndDigitTozoutput[segment].reduce((prev, set) => {
-    //   return prev + set.size;
-    // }, 0);
     if (total < 1) {
       console.log(
         `didn't get a valid set segment: ${segment}! ${Array.from(
@@ -617,40 +551,7 @@ function findHighestValidNumber(
     });
   });
 
-  //console.dir(carryOverValuesAndDigitThatProduceValid);
-
-  // ok - now we can iterate through our set building up the perfect number!
   console.log(`about to find best number...`);
-
   var highest = findHighestValidNumber(segDigitZinZoutMap);
-
-  // this part needs to be recurive, its going to need to search
-
-  // for (var segment = 0; segment < numSegments; segment++) {
-  //   var found = false;
-  //   for (var digit = 9; digit >= 1; digit--) {
-  //     const zinZoutMap = segDigitZinZoutMap.get(segment)!.get(digit);
-  //     const set = zinputAndDigitTozoutput[segment + 1][digit];
-  //     if (set.size === 0) continue;
-
-  //     // process this numberon this segment for the given z input, and see what the output is
-  //     const zreg = testMonad(digit, monadSegments[segment]);
-
-  //     if (set.has(zreg)) {
-  //       bestDigit += `${digit}`;
-  //       found = true;
-  //       break;
-  //     }
-  //   }
-  //   if (!found) {
-  //     console.log(`didn't find at ${segment}`);
-  //     // throw `doh doh doh!`;
-  //     break;
-  //   }
-  // }
-
   console.log(`highest: ${highest}`);
-
-
-  */
 })();
