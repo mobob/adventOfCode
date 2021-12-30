@@ -338,47 +338,18 @@ function testMonadSegmentWith(
 
 type SegmentDigitZinZoutMapType = Map<number, Map<number, Map<number, number>>>;
 
-// // for a given segment and zin input, return all the digit->[zout] matches that would work, sorted
-// // by higest digit value
-// function findAllMatchesForZin(
-//   map: SegmentDigitZinZoutMapType,
-//   segment: number,
-//   zin: number
-// ): Map<number, number[]> {
-
-//   // segDigitZinZoutMap.get(5).get(7).forEach((val, key)=>{if(key === 272125) console.log(`${key} - ${val}`);});
-
-//   const result = new Map<number, number[]>();
-//   map.get(segment)!.forEach((zinZout, digit)=>{
-//     const zout = zinZout.get(zin);
-//     if(zouts) {
-//       result.set(digit, zouts);
-//     }
-//   });
-
-// return result;
-// }
-
-// returns a valid number, or false, based on a given stem
-var highestSearchCount = 0;
 function findHighestValidNumber(
   map: SegmentDigitZinZoutMapType,
   curStr: string = "",
   zin: number = 0
 ): number | false {
-  //if (highestSearchCount++ % 10000000 === 0) {
-  console.log(
-    `${highestSearchCount} looking for highest, cur: ${curStr}, zin: ${zin}`
-  );
-  //}
+  console.log(`looking for highest, cur: ${curStr}, zin: ${zin}`);
 
   if (curStr.length === numDigits) {
-    // perform a final validation, and then we're good
     const cur = parseInt(curStr);
     if (!isValidMONAD(cur)) {
       throw `this number really should have been valid: ${curStr}`;
     }
-
     return cur;
   }
 
@@ -397,6 +368,42 @@ function findHighestValidNumber(
     if (highestValidOrFalse !== false) {
       console.log(`found it!!!!: ${highestValidOrFalse}`);
       return highestValidOrFalse;
+    }
+  }
+
+  return false;
+}
+
+function findLowestValidNumber(
+  map: SegmentDigitZinZoutMapType,
+  curStr: string = "",
+  zin: number = 0
+): number | false {
+  console.log(`looking for lowest, cur: ${curStr}, zin: ${zin}`);
+
+  if (curStr.length === numDigits) {
+    const cur = parseInt(curStr);
+    if (!isValidMONAD(cur)) {
+      throw `this number really should have been valid: ${curStr}`;
+    }
+    return cur;
+  }
+
+  const segment = curStr.length;
+
+  // work our way from the bottom up!
+  for (var digit = 1; digit <= 9; digit++) {
+    const zout = map.get(segment)?.get(digit)?.get(zin);
+    if (zout === undefined) continue;
+
+    const lowestValidOrFalse = findLowestValidNumber(
+      map,
+      curStr + `${digit}`,
+      zout
+    );
+    if (lowestValidOrFalse !== false) {
+      console.log(`found it!!!!: ${lowestValidOrFalse}`);
+      return lowestValidOrFalse;
     }
   }
 
@@ -551,7 +558,9 @@ function findHighestValidNumber(
     });
   });
 
-  console.log(`about to find best number...`);
+  console.log(`about to find best numbers...`);
   var highest = findHighestValidNumber(segDigitZinZoutMap);
   console.log(`highest: ${highest}`);
+  var lowest = findLowestValidNumber(segDigitZinZoutMap);
+  console.log(`lowest: ${lowest}`);
 })();
