@@ -1,5 +1,7 @@
 import assert from "assert";
 import * as fs from "fs";
+import { cursorTo } from "readline";
+import { DebugLoggerFunction } from "util";
 
 var array = fs.readFileSync("src/2021/day24.txt").toString().trim().split("\n");
 var arrayTest = fs
@@ -114,12 +116,12 @@ class ALU {
   execute(
     program: Instruction[],
     input: string[],
-    displayFun: (alu: ALU) => void = (_) => {}
+    displayFun: DisplayFunctionType = (_) => {}
   ) {
-    for (var i of program) {
+    for (var iind = 0; iind < program.length; iind++) {
       try {
-        this.executeSingle(i, input);
-        displayFun(this);
+        this.executeSingle(program[iind], input);
+        displayFun(this, iind);
       } catch (e) {
         if (e === `missing input` && !this.failOnMissingInput) {
           return;
@@ -150,6 +152,8 @@ function parseInput(lines: string[]): Instruction[] {
 
   return instructions;
 }
+
+const instructions = parseInput(array);
 
 const test = () => {
   const instructions = parseInput(arrayTest);
@@ -223,34 +227,23 @@ const test2 = () => {
   console.log(`tests 2 pass!`);
 };
 
-type DisplayFunctionType = (alu: ALU) => void;
+type DisplayFunctionType = (alu: ALU, iind: number) => void;
 
 function isValidMONAD(
   num: number,
-  monad: Instruction[],
+  monad: Instruction[] = instructions,
   alu: ALU = new ALU(),
   validTargetZregisters: Set<number> = new Set([0]),
   displayFun: DisplayFunctionType = (_) => {}
-): false | number {
-  alu.failOnMissingInput = false;
-
-  const strNum = `${num}`;
-  if (/*strNum.length !== 14 ||*/ strNum.includes("0")) return false;
-
-  const input = strNum.split("");
-  alu.execute(monad, input, displayFun);
-
-  if (!validTargetZregisters.has(alu.variableValueNamed("z"))) {
-    return false;
-  }
-
-  return alu.variableValueNamed("z");
+): boolean {
+  const zreg = testMonad(num, monad, alu, displayFun);
+  return validTargetZregisters.has(zreg);
 }
 
 // returns resultant z register
 function testMonad(
   num: number,
-  monad: Instruction[],
+  monadSegments: Instruction[],
   alu: ALU = new ALU(),
   displayFun: DisplayFunctionType = (_) => {}
 ): number {
@@ -260,17 +253,17 @@ function testMonad(
   if (strNum.includes("0")) throw `bad input!`;
 
   const input = strNum.split("");
-  alu.execute(monad, input, displayFun);
+  alu.execute(monadSegments, input, displayFun);
 
   return alu.variableValueNamed("z");
 }
 
-const logItAll = (alu: ALU) => {
+const logItAll = (alu: ALU, ind: number = -1) => {
   const ppv = (v: Variable) => {
     return `${v.name}:\t${v.value}`;
   };
   console.log(
-    `${ppv(alu.variables[0])} - ${ppv(alu.variables[1])} - ${ppv(
+    `IN:${ind} ${ppv(alu.variables[0])} - ${ppv(alu.variables[1])} - ${ppv(
       alu.variables[2]
     )} - ${ppv(alu.variables[3])}`
   );
@@ -292,11 +285,115 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
   };
 };
 
+function testMonadSegmentWith(
+  instructions: Instruction[],
+  zregvalues: number[],
+  digits: number[],
+  logFunction: DisplayFunctionType = () => {}
+): Map<number, Map<number, number>> {
+  // digit -> zreg -> zregout
+  const results = new Map<number, Map<number, number>>();
+  for (var digit of digits) {
+    const digitMap = new Map<number, number>();
+    results.set(digit, digitMap);
+    for (var zreg of zregvalues) {
+      const alu = new ALU();
+      alu.variableNamed("z").value = zreg;
+      const result = testMonad(digit, instructions, alu, logFunction);
+      digitMap.set(zreg, result);
+
+      console.log(
+        `--- testMonadSegmentWith, digit: ${digit} result: ${result}`
+      );
+    }
+  }
+
+  return results;
+}
+
+type SegmentDigitZinZoutMapType = Map<number, Map<number, Map<number, number>>>;
+
+// // for a given segment and zin input, return all the digit->[zout] matches that would work, sorted
+// // by higest digit value
+// function findAllMatchesForZin(
+//   map: SegmentDigitZinZoutMapType,
+//   segment: number,
+//   zin: number
+// ): Map<number, number[]> {
+
+//   // segDigitZinZoutMap.get(5).get(7).forEach((val, key)=>{if(key === 272125) console.log(`${key} - ${val}`);});
+
+//   const result = new Map<number, number[]>();
+//   map.get(segment)!.forEach((zinZout, digit)=>{
+//     const zout = zinZout.get(zin);
+//     if(zouts) {
+//       result.set(digit, zouts);
+//     }
+//   });
+
+// return result;
+// }
+
+// returns a valid number, or false, based on a given stem
+var highestSearchCount = 0;
+function findHighestValidNumber(
+  map: SegmentDigitZinZoutMapType,
+  curStr: string = "",
+  zin: number = 0
+): number | false {
+  //if (highestSearchCount++ % 10000000 === 0) {
+  console.log(
+    `${highestSearchCount} looking for highest, cur: ${curStr}, zin: ${zin}`
+  );
+  //}
+
+  if (curStr.length === numDigits) {
+    // perform a final validation, and then we're good
+    const cur = parseInt(curStr);
+    if (!isValidMONAD(cur)) {
+      throw `this number really should have been valid: ${curStr}`;
+    }
+
+    return cur;
+  }
+
+  // start on the given segment
+
+  const segment = curStr.length;
+
+  // for (var segment = curStr.length; segment < numDigits; segment++) {
+  // const digitToZoutMap = findAllMatchesForZin(map, segment, zin);
+  // if(digitToZoutMap.size == 0) return false;
+
+  // work our way from the top downwards in digits
+  for (var digit = 9; digit >= 1; digit--) {
+    const zout = map.get(segment)?.get(digit)?.get(zin);
+    if (!zout) continue;
+
+    // const zouts : number[] = digitToZoutMap.get(digit);
+    // if(!zouts) continue;
+
+    // lets try em all, and once we find one, we're done
+    //for(var zout of zouts) {
+    const highestValidOrFalse = findHighestValidNumber(
+      map,
+      curStr + `${digit}`,
+      zout
+    );
+    if (highestValidOrFalse !== false) {
+      console.log(`found it!!!!: ${highestValidOrFalse}`);
+      return highestValidOrFalse;
+      //}
+    }
+  }
+  // }
+
+  return false;
+}
+
 (() => {
   test();
   test2();
-
-  const instructions = parseInput(array);
 
   console.log(
     `parsed ${
@@ -331,73 +428,127 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
 
   // lets experiment with different inputs - via inspection we can see that only the z value is passed from
   // one segment to the other, so its all that matters
-  const max = 10000000;
-  const min = -10000000;
+  const max = 500000; //10000000;
+  const min = 0; //-10000000;
   var smallestFound = NaN;
   var biggestFound = NaN;
 
   // OK we'll work our way backwards, starting at 0 in the carry over, and working our way up, and bail if we
   // don't nail every digit
 
+  const allDigits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  // this moves forward
+
+  const results = new Map<number, ReturnType<typeof testMonadSegmentWith>>();
+  for (var segment of [0, 1]) {
+    var zregvaluesToTestWith: number[] = [];
+    if (segment === 0) {
+      zregvaluesToTestWith.push(0);
+    } else {
+      const digitMap = results.get(segment - 1);
+
+      // merge all these together
+      digitMap!.forEach((zregmap, digit) => {
+        zregvaluesToTestWith.push(...Array.from(zregmap.values()));
+      });
+    }
+
+    results.set(
+      segment,
+      testMonadSegmentWith(
+        monadSegments[segment],
+        zregvaluesToTestWith,
+        allDigits,
+        logItAll
+      )
+    );
+  }
+
+  results.forEach((digitMap, segment) => {
+    digitMap.forEach((zinMap, digit) => {
+      zinMap.forEach((zout, zin) => {
+        console.log(
+          `segment ${segment}, digit: ${digit} zin: ${zin} zout: ${zout}`
+        );
+      });
+    });
+  });
+
+  console.log(isValidMONAD(3559921181672, instructions));
+  console.log(isValidMONAD(35599211816721, instructions));
+  console.log(isValidMONAD(35599211816722, instructions));
+  console.log(isValidMONAD(35599211816723, instructions));
+  console.log(isValidMONAD(35599211816724, instructions));
+  console.log(isValidMONAD(35599211816725, instructions));
+  console.log(isValidMONAD(35599211816726, instructions));
+  console.log(isValidMONAD(35599211816727, instructions));
+  console.log(isValidMONAD(35599211816728, instructions));
+  console.log(isValidMONAD(35599211816729, instructions));
+  return;
+
+  /*
+
+  //return;
+
   // for each segment, we'll create a map of the carry over + input value that produces a valid result.
   // for the last segment, the result we want is all 1's, but that changes
-  var carryOverValuesAndDigitThatProduceValid: Set<number>[][] = new Array<
-    Set<number>[]
-  >(numSegments + 1);
-  for (var segment = 0; segment < numSegments + 1; segment++) {
-    carryOverValuesAndDigitThatProduceValid[segment] = new Array<Set<number>>(
-      10
-    );
-    for (var digit = 1; digit <= 9; digit++) {
-      carryOverValuesAndDigitThatProduceValid[segment][digit] =
-        new Set<number>();
-    }
-  }
-  for (var digit = 1; digit <= 9; digit++) {
-    carryOverValuesAndDigitThatProduceValid[numSegments][digit].add(0);
-  }
+
+  // segment -> digit -> zin -> zout
+  var segDigitZinZoutMap: Map<
+    number,
+    Map<number, Map<number, number>>
+  > = new Map<number, Map<number, Map<number, number>>>();
 
   var iteration = 0;
 
-  // // just take a look at the first segment for a bit
-  // for (var digit = 1; digit <= 9; digit++) {
-  //   const result = testMonad(digit, monadSegments[0]);
-  //   console.log(`segment 0, digit: ${digit} result: ${result}`);
-  // }
-
-  // return;
-
-  // we don't go right to segment 0 - we know what the carrying info for that should be, it should be 0!
   for (var segment = numSegments - 1; segment >= 0; segment--) {
+    const digitZinZoutMap = new Map<number, Map<number, number>>();
+
     // lets get our valid target value set
     var validTargetZregisters = new Set<number>();
-    carryOverValuesAndDigitThatProduceValid[segment + 1].forEach((set) =>
-      set.forEach((val) => validTargetZregisters.add(val))
-    );
+
+    // if this is the last segment, we know the only valid output is 0
+    if (segment === numSegments - 1) {
+      validTargetZregisters.add(0);
+    } else {
+      // pull from the one above us
+      segDigitZinZoutMap.get(segment + 1)?.forEach((zinZoutMap, digit) => {
+        Array.from(zinZoutMap.keys()).forEach((zin) =>
+          validTargetZregisters.add(zin)
+        );
+      });
+    }
 
     console.log(
       `segment ${segment} starting, valid z regs (size:${
         validTargetZregisters.size
-      }): ${Array.from(validTargetZregisters)}`
+      }): ${Array.from(validTargetZregisters).slice(0, 50)} ... ${Array.from(
+        validTargetZregisters
+      ).slice(validTargetZregisters.size - 50)}`
     );
 
-    for (var carryInto = min; carryInto < max; carryInto++) {
-      // we can just jump out if its the first segment, we only have one option for carrying in, and its 0.
-      if (segment === 0 && carryInto !== 0) break;
+    // we can just jump out if its the first segment, we only have one option for carrying in, and its 0.
+    // NOPE - lets try some valid z values here:
+    // if (segment === 0 && carryInto !== 0) break;
 
-      for (var digit = 1; digit <= 9; digit++) {
+    for (var digit = 1; digit <= 9; digit++) {
+      const zinZoutMap = new Map<number, number>();
+
+      const maxToUse = segment === 5 ? 15000000 : max;
+      for (var zin = min; zin < maxToUse; zin++) {
         const alu = new ALU();
-        alu.variableNamed("z").value = carryInto;
-        const log = iteration++ % 999997 === 0; //&& segment <= 2;
+        alu.variableNamed("z").value = zin;
+        const log = false; //iteration++ % 999997 === 0; //&& segment <= 2;
         if (log) {
           console.log(
-            `about to test seg: ${segment}, carryInfo: ${carryInto} digit: ${digit}, against: ${Array.from(
+            `about to test seg: ${segment}, zin: ${zin} digit: ${digit}, against: ${Array.from(
               validTargetZregisters
-            )}`
+            ).slice(0, 100)} len: ${validTargetZregisters.size}`
           );
         }
 
-        const result = isValidMONAD(
+        const zoutOrFalse = isValidMONAD(
           digit,
           monadSegments[segment],
           alu,
@@ -405,38 +556,26 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
           log ? logItAll : () => {}
         );
 
-        if (result !== false) {
-          if (isNaN(smallestFound) || carryInto < smallestFound)
-            smallestFound = carryInto;
-          if (isNaN(biggestFound) || carryInto > biggestFound)
-            biggestFound = carryInto;
+        if (zoutOrFalse !== false) {
+          if (isNaN(smallestFound) || zin < smallestFound) smallestFound = zin;
+          if (isNaN(biggestFound) || zin > biggestFound) biggestFound = zin;
 
-          console.log(
-            `valid! seg: ${segment}, carryInfo: ${carryInto} digit: ${digit}, matched: ${result}`
-          );
+          // console.log(
+          //   `valid! seg: ${segment}, digit: ${digit}, zin: ${zin}, zout: ${zoutOrFalse} (foundsofarfordigit: ${zinZoutMap.size})`
+          // );
 
           // tell the prev segment what they should be looking for
-          carryOverValuesAndDigitThatProduceValid[segment][digit].add(
-            carryInto
-          );
+          zinZoutMap.set(zin, zoutOrFalse);
         }
       }
 
-      // we can bail if we have a full set... actually not quite sure we can right now
-      // const total = carryOverValuesAndDigitThatProduceValid[segment].reduce(
-      //   (prev, set) => {
-      //     return prev + set.size;
-      //   },
-      //   0
-      // );
-      // const totalDigits = carryOverValuesAndDigitThatProduceValid[
-      //   segment
-      // ].reduce((prev, set) => {
-      //   return prev + set.size > 0 ? 1 : 0;
-      // }, 0);
-      // if (totalDigits === 9) {
-      //   break;
-      // }
+      if (zinZoutMap.size > 0) {
+        digitZinZoutMap.set(digit, zinZoutMap);
+      }
+    }
+
+    if (digitZinZoutMap.size > 0) {
+      segDigitZinZoutMap.set(segment, digitZinZoutMap);
     }
 
     console.log(`biggest: ${biggestFound}, smallest: ${smallestFound}`);
@@ -447,16 +586,18 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
     // but actually walk through the instructions to underestand it better. READ THE CODE.
 
     // do we have a good set
-    const total = carryOverValuesAndDigitThatProduceValid[segment].reduce(
-      (prev, set) => {
-        return prev + set.size;
-      },
-      0
-    );
+    var total = 0;
+    digitZinZoutMap.forEach((zinZoutMap, digit) => {
+      total += zinZoutMap.size;
+    });
+
+    // const total = zinputAndDigitTozoutput[segment].reduce((prev, set) => {
+    //   return prev + set.size;
+    // }, 0);
     if (total < 1) {
       console.log(
-        `didn't get a valid set segment:${segment}! ${Array.from(
-          carryOverValuesAndDigitThatProduceValid[segment].values()
+        `didn't get a valid set segment: ${segment}! ${Array.from(
+          digitZinZoutMap.entries()
         )}`
       );
       break;
@@ -465,10 +606,14 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
   }
 
   console.log("info...");
-  carryOverValuesAndDigitThatProduceValid.forEach((setsForDigits, segment) => {
+  segDigitZinZoutMap.forEach((digitZinZoutMap, segment) => {
     console.log(`segment: ${segment}`);
-    setsForDigits.forEach((set, digit) => {
-      console.log(`segment: ${segment} - ${digit} - z size: ${set.size}`);
+    digitZinZoutMap.forEach((zinZoutMap, digit) => {
+      console.log(
+        `segment: ${segment} - ${digit} - z size: ${
+          zinZoutMap.size
+        } ... ${Array.from(zinZoutMap.entries()).slice(0, 30)}`
+      );
     });
   });
 
@@ -477,31 +622,35 @@ const logEvery = (iterations: number): ((alu: ALU) => void) => {
   // ok - now we can iterate through our set building up the perfect number!
   console.log(`about to find best number...`);
 
-  var bestDigit = "";
+  var highest = findHighestValidNumber(segDigitZinZoutMap);
 
-  for (var segment = 0; segment < numSegments; segment++) {
-    var found = false;
-    for (var digit = 9; digit >= 1; digit--) {
-      const set = carryOverValuesAndDigitThatProduceValid[segment + 1][digit];
-      if (set.size === 0) continue;
+  // this part needs to be recurive, its going to need to search
 
-      // process this numberon this segment for the given z input, and see what the output is
-      const zreg = testMonad(digit, monadSegments[segment]);
+  // for (var segment = 0; segment < numSegments; segment++) {
+  //   var found = false;
+  //   for (var digit = 9; digit >= 1; digit--) {
+  //     const zinZoutMap = segDigitZinZoutMap.get(segment)!.get(digit);
+  //     const set = zinputAndDigitTozoutput[segment + 1][digit];
+  //     if (set.size === 0) continue;
 
-      if (set.has(zreg)) {
-        bestDigit += `${digit}`;
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      console.log(`didn't find at ${segment}`);
-      // throw `doh doh doh!`;
-      break;
-    }
-  }
+  //     // process this numberon this segment for the given z input, and see what the output is
+  //     const zreg = testMonad(digit, monadSegments[segment]);
 
-  const isValid = isValidMONAD(parseInt(bestDigit), instructions);
-  console.log(`is valid? ${isValid}`);
-  console.log(`best: ${bestDigit}`);
+  //     if (set.has(zreg)) {
+  //       bestDigit += `${digit}`;
+  //       found = true;
+  //       break;
+  //     }
+  //   }
+  //   if (!found) {
+  //     console.log(`didn't find at ${segment}`);
+  //     // throw `doh doh doh!`;
+  //     break;
+  //   }
+  // }
+
+  console.log(`highest: ${highest}`);
+
+
+  */
 })();
